@@ -1,0 +1,192 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+
+exec 2>/dev/null
+
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+	
+	if [ -x "$KWNG_ENV" ]
+		then
+			IFS='
+			'
+			export `$KWNG_ENV --debug | grep -v "^#"`
+			IFS=' '
+		else
+			$KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+			exit 1000
+	fi
+
+	if [ ! -f "$PANEL_CONFIG" ]
+		then
+			$KWNG_LOG --error --code=1002 --message="Fpanel config doesn't exists."
+			exit 1002
+	fi
+	SOASERIAL=`date +%s`
+
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]
+		then
+			$KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+			exit 1001
+	fi
+
+}
+
+function active_sessions() {
+	ACTIVE_SESSIONS=`ftpwho`
+	SESSION_STATUS=`echo $ACTIVE_SESSIONS | grep "no users connected"`
+	RETVAL=$?
+	
+	if [ "$RETVAL" = "0" ]
+		then
+			JSON_DATA="{}"
+			echo $JSON_DATA
+			exit 0
+		else
+			ACTIVE_SESSIONS=`echo $ACTIVE_SESSIONS | sed '1d'`
+			ACTIVE_SESSIONS=`echo $ACTIVE_SESSIONS | grep -v "Service class"`
+			while read line
+			do
+				LINE=`echo $line | sed -e 's/\[//g' -e 's/\]//g'`
+				SESS_ID=`echo $LINE | awk '{ print $1}'`
+				USER=`echo $LINE | awk '{ print $2}'`
+				LOGGED_TIME=`echo $LINE | awk '{ print $3}'`
+				IDLE_TIME=`echo $LINE | awk '{ print $4}'`
+				if [ -z "$JSON_DATA" ]
+					then
+						JSON_DATA="[\"${SESS_ID}\",\"${USER}\",\"${LOGGED_TIME}\",\"${IDLE_TIME}\"]"
+					else
+						JSON_DATA="$JSON_DATA,[\"${SESS_ID}\",\"${USER}\",\"${LOGGED_TIME}\",\"${IDLE_TIME}\"]"
+				fi
+			done <<<  $ACTIVE_SESSIONS
+			echo "[$JSON_DATA]"
+	fi
+}
+
+function kill_session() {
+	if [ ! -z "$PID" ]
+		then
+		kill -9 $PID
+		$KWNG_LOG --success --code=6701 --message="Ftp Session is killed"
+		exit 0
+	else
+		$KWNG_LOG --error --code=6701 --message="Mssing arguments"
+		exit 6701		
+	fi
+}
+
+function main_case() {
+	while [ "$1" != "" ]
+	do
+		case $1 in
+			--pid=*)
+				PID=`echo "$1"| sed 's/--pid=//g'`
+				;;
+			--timeout-idle=*)
+				IDLE_TIMEOUT=`echo "$1"| sed 's/--timeout-idle=//g'`
+				;;
+			--timeout-transfer=*)
+				TRANSFER_TIMEOUT=`echo "$1"| sed 's/--timeout-transfer=//g'`
+				;;
+			--max-instances=*)
+				MAX_INSTANCES=`echo "$1"| sed 's/--max-instances=//g'`
+				;;
+			--max-clients=*)
+				MAX_CLIENTS=`echo "$1"| sed 's/--max-clients=//g'`
+				;;
+			--message=*)
+				MESSAGE=`echo "$1"| sed 's/--message=//g'`
+				;;
+			esac
+		shift
+	done
+}
+
+function ftp_server_settings() {
+	if [ ! -z "$IDLE_TIMEOUT" ]
+		then
+			cat $PROFTP_CONF | grep "^TimeoutIdle.*[0-9]"
+			RETVAL=$?
+			if [ "$RETVAL" = "0" ]
+				then
+					sed -i 's/^TimeoutIdle.*[0-9]$/TimeoutIdle\t\t'"$IDLE_TIMEOUT"'/g' $PROFTP_CONF
+				else
+					echo "TimeoutIdle\t\t$IDLE_TIMEOUT" >> $PROFTP_CONF
+			fi
+	fi
+
+	if [ ! -z "$TRANSFER_TIMEOUT" ]
+		then
+			cat $PROFTP_CONF | grep "^TimeoutNoTransfer.*[0-9]"
+			RETVAL=$?
+			if [ "$RETVAL" = "0" ]
+				then
+					sed -i 's/^TimeoutNoTransfer.*[0-9]$/TimeoutNoTransfer\t\t'"$TRANSFER_TIMEOUT"'/g' $PROFTP_CONF
+				else
+					echo "TimeoutNoTransfer\t\t$TRANSFER_TIMEOUT" >> $PROFTP_CONF
+			fi
+	fi
+
+	if [ ! -z "$MAX_INSTANCES" ]
+		then
+			cat $PROFTP_CONF | grep "^MaxInstances.*[0-9]"
+			RETVAL=$?
+			if [ "$RETVAL" = "0" ]
+				then
+					sed -i 's/^MaxInstances.*[0-9]$/MaxInstances\t\t'"$MAX_INSTANCES"'/g' $PROFTP_CONF
+				else
+					echo "MaxInstances\t\t$MAX_INSTANCES" >> $PROFTP_CONF
+			fi		
+	fi
+
+	if [ ! -z "$MAX_CLIENTS" ]
+		then
+			cat $PROFTP_CONF | grep "^MaxClients.*[0-9]"
+			RETVAL=$?
+			if [ "$RETVAL" = "0" ]
+				then
+					sed -i 's/^MaxClients.*/MaxClients\t\t'"$MAX_CLIENTS"'/g' $PROFTP_CONF
+				else
+					echo "MaxClients\t\t$MAX_CLIENTS" >> $PROFTP_CONF
+			fi	
+		
+	fi
+
+	if [ ! -z "$MESSAGE" ]
+		then
+		sed -i 's/^TimeoutIdle.*/TimeoutIdle\t\t'"$IDLE_TIMEOUT"'/g' $PROFTP_CONF
+	fi
+	$KWNG_LOG --success --code=6702 --message="Ftp settings saved"
+
+}
+
+check_command
+check_root
+
+PROC_MESSAGE=`echo "Process:$0 $@" | sed 's|["'\'']||g'`
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+
+PROCESS="$1"
+
+case $PROCESS in
+	--sessions)
+		shift
+		main_case "$@"
+		active_sessions
+		;;		
+	--kill)
+		shift
+		main_case "$@"
+		kill_session
+		;;
+	--settings)
+		shift
+		main_case "$@"
+		ftp_server_settings
+		;;
+esac

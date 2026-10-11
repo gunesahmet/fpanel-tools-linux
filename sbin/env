@@ -1,0 +1,375 @@
+#!/bin/bash
+# Encrypted by FPanel-Compiler
+
+function check_root() {
+	if [ $(id -u) -ne 0 ]; then
+
+              echo "Error 1001: You must be root"
+              exit 1
+	fi
+}
+
+function detect_system_type() {
+       if [ -f "/etc/os-release" ]; then
+              OS_RELEASE_FILE=`cat /etc/os-release | grep "^ID="`
+              echo $OS_RELEASE_FILE | sed -e 's/ID=//g' -e 's/"//g'
+       else
+              LSB_RELEASE=`lsb_release -is`
+              echo "$LSB_RELEASE" | tr '[:upper:]' '[:lower:]'
+       fi
+}
+
+function detect_system_version() {
+       if [ -f "/etc/os-release" ]; then
+              OS_RELEASE_FILE=`cat /etc/os-release | grep "^VERSION_ID=" | sed -e 's/\"//g'  -e "s/\'//g"`
+              echo $OS_RELEASE_FILE | sed -e 's/VERSION_ID=//g' -e 's/"//g'  -e "s/\'//g"
+       else
+              LSB_RELEASE=`lsb_release -rs`
+              echo "$LSB_RELEASE" | tr '[:upper:]' '[:lower:]' | sed -e 's/\./ /g' -e "s/\'//g" | awk '{print $1}'
+       fi
+}
+
+function detect_system_detailed() {
+       if [ -f "/etc/os-release" ]; then
+              OS_RELEASE_FILE=`cat /etc/os-release | grep "^PRETTY_NAME=" | sed -e 's/\"//g' -e 's/ /-/g' -e "s/\'//g"`
+              echo $OS_RELEASE_FILE | sed -e 's/PRETTY_NAME=//g'
+       else
+              LSB_RELEASE=`lsb_release -d | sed -e 's/Description\://g'`
+              echo "$LSB_RELEASE" | sed -e 's/\./ /g' | awk '{print $1}'
+       fi
+}
+
+function create_environments() {
+	SYSTEM_TYPE=`detect_system_type`
+	SYSTEM_VERSION=`detect_system_version`
+	SYSTEM_VERSIOND=`detect_system_detailed`
+	PANEL_DIR="/usr/local/fpanel"
+	PANEL_CORE_DIR="$PANEL_DIR/core"
+	PANEL_LOG_DIR="/var/log/fpanel"
+	PANEL_LOG="$PANEL_LOG_DIR/*.log"
+	APACHE_DIR="/etc/apache2"
+	APACHE_DEFAULT_CONF="/etc/apache2/apache2.conf"
+	BIND_DIR="/etc/bind"
+	VHOSTS_DIR="/var/www"
+	APACHE_INIT="/etc/init.d/apache2"
+	APACHE_BIN="/usr/sbin/apache2ctl"
+	PANEL_CONFIG="$PANEL_DIR/etc/panel.conf"
+	PANEL_RELEASE_CONF="$PANEL_DIR/etc/release.conf"
+	PANEL_HTTP_CONFIG_INI="$PANEL_DIR/httpd/htdocs/config/config.ini"
+	SYSCONF="$PANEL_DIR/etc/sys.conf"
+	NETWORK_CONF="$PANEL_DIR/etc/network.conf"
+	HOSTNAME_CONF="/etc/hostname"
+	HOSTS_FILE="/etc/hosts"
+	LOG_ROTATE_VHOST="/etc/logrotate.d/vhosts"
+	LOG_ROTATE_CONF="/etc/logrotate.conf"
+	PROFTP_CONF="/etc/proftpd/proftpd.conf"
+	MY_CNF="/etc/my.cnf"
+	CRONTAB_FILE="/etc/crontab"
+	CRONTAB_DIR="/var/spool/cron/crontabs"
+	INIT_DIR="/etc/init.d"
+	MYSQL_DIR="/var/lib/mysql"
+	MAIL_DIR="$PANEL_DIR/mail"
+	APPS_DIR="$PANEL_DIR/apps"
+	REPO_SERVER="repo.fpanel.net"
+	APPS_SERVER="apps.fpanel.net"
+	UPDATE_SERVER="update.fpanel.net"
+	SQLITE="sqlite3"
+	MAIL_DB="$MAIL_DIR/etc/mail.db"
+	MIME_TYPES_CONFIG="/etc/mime.types"
+	WEB_STATISTICS_CLI="$PANEL_DIR/httpd/htdocs/cli.php"
+	WEB_STATISTICS_TOOL="$PANEL_CORE_DIR/sbin/webstatistics"
+	FPANEL_STATISTICS_TOOL="$PANEL_CORE_DIR/sbin/statistics"
+	SYSTEM_PACKAGE_CONF="$PANEL_DIR/etc/.sys.packages"
+	
+	USER_PASSWD="/etc/passwd"
+	USERADD="/usr/sbin/useradd"
+	USERDEL="/usr/sbin/userdel"
+	USERMOD="/usr/sbin/usermod"
+	GROUPADD="/usr/sbin/groupadd"
+	GROUPDEL="/usr/sbin/groupdel"
+	GROUPMOD="/usr/sbin/groupmod"
+	
+	USERTMPMAIL_DIR="/var/mail"
+	USERTMPFILE="/var/spool/mail"
+
+	IFCONFIG="/sbin/ifconfig"
+	ROUTE="/sbin/route"
+
+	NTPDATE="/usr/sbin/ntpdate"
+	NTPSERVER="0.asia.pool.ntp.org"
+	
+	NO_LOGIN="/sbin/nologin"
+	BACKUP_EXT="backup"
+	
+	SPAM_STARTUP="/etc/sysconfig/spamassassin"
+	SPAM_INIT="$INIT_DIR/spamassassin"
+	SPAM_LOCAL="/etc/spamassassin/local.cf"
+	SPAM_BLACK_LOCAL="/etc/spamassassin/blacklist.cf"
+	SPAM_WHITE_LOCAL="/etc/spamassassin/whitelist.cf"
+	SPAM_CLIENT="/usr/bin/spamc"
+	SPAM_DAEMON="/usr/bin/spamd"
+	
+	VDELIVERMAIL="$PANEL_DIR/bin/vdelivermail"
+	VPASSWD="$PANEL_DIR/bin/vpasswd"
+	VMAIL_USER="vmail"
+	VMAIL_GROUP="vmail"
+
+	NETCAT="$PANEL_CORE_DIR/sbin/netcat"
+
+	ADMINMNG="$PANEL_CORE_DIR/bin/adminmng"
+	APPINSTALLER="$PANEL_CORE_DIR/bin/appinstaller"
+	BACKUPCLIENTMNG="$PANEL_CORE_DIR/bin/backupclientmng"
+	BACKUPMNG="$PANEL_CORE_DIR/bin/backupmng"
+	BACKUPSRVMNG="$PANEL_CORE_DIR/bin/backupsrvmng"
+	COMPILE="$PANEL_CORE_DIR/bin/compile"
+	CRONTABMNG="$PANEL_CORE_DIR/bin/crontabmng"
+	DATEMNG="$PANEL_CORE_DIR/bin/datemng"
+	DEBUG="$PANEL_CORE_DIR/bin/debug"
+	DIRECTORYMNG="$PANEL_CORE_DIR/bin/directorymng"
+	DNSMNG="$PANEL_CORE_DIR/bin/dnsmng"
+	DOMALIASMNG="$PANEL_CORE_DIR/bin/domaliasmng"
+	FIXMNG="$PANEL_CORE_DIR/bin/fixmng"
+	FTPMNG="$PANEL_CORE_DIR/bin/ftpmng"
+	LOGMNG="$PANEL_CORE_DIR/bin/logmng"
+	MAILMNG="$PANEL_CORE_DIR/bin/mailmng"
+	MAILQUEUEMNG="$PANEL_CORE_DIR/bin/mailqueuemng"
+	MAILSRVMNG="$PANEL_CORE_DIR/bin/mailsrvmng"
+	MIGRATIONMNG="$PANEL_CORE_DIR/bin/migrationmng"
+	NETWORKMNG="$PANEL_CORE_DIR/bin/networkmng"
+	PACKAGEMNG="$PANEL_CORE_DIR/bin/packagemng"
+	PAGEMNG="$PANEL_CORE_DIR/bin/pagemng"
+	PHPMNG="$PANEL_CORE_DIR/bin/phpmng"
+	PROTECTMNG="$PANEL_CORE_DIR/bin/protectmng"
+	SERVICESMNG="$PANEL_CORE_DIR/bin/servicesmng"
+	SQLMNG="$PANEL_CORE_DIR/bin/sqlmng"
+	SSLMNG="$PANEL_CORE_DIR/bin/sslmng"
+	SUBDIRECTORYMNG="$PANEL_CORE_DIR/bin/subdirectorymng"
+	SUBUSERMNG="$PANEL_CORE_DIR/bin/subusermng"
+	SUBVHOSTMNG="$PANEL_CORE_DIR/bin/subvhostmng"
+	USERMNG="$PANEL_CORE_DIR/bin/usermng"
+	VHOSTMNG="$PANEL_CORE_DIR/bin/vhostmng"
+	WEBSRVMNG="$PANEL_CORE_DIR/bin/websrvmng"
+	WEBSTATISTICS="$PANEL_CORE_DIR/bin/webstatistics"
+	WEBALIZERMNG="$PANEL_CORE_DIR/bin/webalizersmng"
+	AWSTATSMNG="$PANEL_CORE_DIR/bin/awstatsmng"
+	STATISTICSMNG="$PANEL_CORE_DIR/bin/statisticsmng"
+	WRAPPER="$PANEL_CORE_DIR/bin/wrapper"
+	FCRYPT="$PANEL_CORE_DIR/sbin/fcrypt"
+	AWSTATS_DIR="$PANEL_DIR/awstats"
+	WEBALIZER_DIR="$PANEL_DIR/webalizer"
+	
+	PANEL_TMP_DIR="$PANEL_DIR/tmp"
+
+       DOMAIN_CONFIGS_DIR="$PANEL_DIR/configs/domains"
+       DOMAIN_LOGS_DIR="$PANEL_LOG_DIR/domains"
+
+	NOGROUP="nogroup"
+	NGINX_DIR="/etc/nginx"
+	NGINX_DEFAULT_CONF="/etc/nginx/nginx.conf"
+	NGINX_BIN="/usr/sbin/nginx"
+
+	PHP_FPM_DIR="/etc/php/fpm"
+	PHP_FPM_POOL_DIR="$PHP_FPM_DIR/pool.d"
+
+	PHP_FPM_WWW_CONF="$PHP_FPM_POOL_DIR/www.conf"
+	PHP_FPM_CONF="$PHP_FPM_DIR/php-fpm.conf"
+
+	PHP_FPM_VHOST_CONF="$PHP_FPM_POOL_DIR/zzz999_httpd.conf"
+	PHP_FPM_RUN_DIR="/var/spool/php-fpm"
+
+	if [ "$SYSTEM_TYPE" == "centos" ]; then
+              PHP_DIR="/etc/php.d"
+              PHP_INI="/etc/php.ini"
+              APACHE_DIR="/etc/httpd"
+              APACHE_DEFAULT_CONF="/etc/httpd/conf/httpd.conf"
+              APACHE_INIT="/etc/init.d/httpd"
+              APACHE_BIN="/usr/sbin/httpd"
+              NOGROUP="nobody"
+              CRONTAB_DIR="/var/spool/cron"
+
+              PHP_FPM_DIR="/etc/php-fpm.d"
+              PHP_FPM_WWW_CONF="$PHP_FPM_DIR/www.conf"
+              PHP_FPM_CONF="/etc/php-fpm.conf"
+              PHP_FPM_VHOST_CONF="$PHP_FPM_DIR/zzz999_httpd.conf"
+
+              if [ -f /usr/bin/sqlite3 ]
+                     then
+                     SQLITE="/usr/bin/sqlite3"
+                     else
+                     SQLITE="/usr/bin/sqlite"
+              fi
+			
+	fi
+	if [ -f $PANEL_CONFIG ]; then
+              CLI_USERNAME=`cat $PANEL_CONFIG | awk '{print $1}'`
+              CLI_PASSWD=`cat $PANEL_CONFIG | awk '{print $2}'`
+              FPANEL_ADMIN_PASSWD=`cat $PANEL_CONFIG | awk '{print $3}'`
+       else
+              CLI_PASSWD=""
+              CLI_USERNAME=""
+              FPANEL_ADMIN_PASSWD=""
+	fi
+	
+echo "PANEL_DIR=$PANEL_DIR
+PANEL_CORE_DIR=$PANEL_CORE_DIR
+PANEL_BACKUP_DIR=$PANEL_DIR/backup
+PANEL_TEMPLATE_DIR=$PANEL_CORE_DIR/templates
+PANEL_HTTP_DIR=$PANEL_DIR/httpd
+PANEL_MYSQL_DIR=$PANEL_DIR/mysql
+CSRKEYTMP=$PANEL_DIR/httpd/htdocs/tmp
+PANEL_CONFIG=$PANEL_CONFIG
+PANEL_RELEASE_CONF=$PANEL_RELEASE_CONF
+SYSCONF=$SYSCONF
+NETWORK_CONF=$NETWORK_CONF
+REPO_SERVER=$REPO_SERVER
+APPS_SERVER=$APPS_SERVER
+UPDATE_SERVER=$UPDATE_SERVER
+CLI_USERNAME=$CLI_USERNAME
+FPANEL_ADMIN_PASSWD=$FPANEL_ADMIN_PASSWD
+CLI_PASSWD=$CLI_PASSWD
+SYSTEM_TYPE=$SYSTEM_TYPE
+SYSTEM_VERSION=$SYSTEM_VERSION
+SYSTEM_VERSIOND=$SYSTEM_VERSIOND
+MAIL_DB=$MAIL_DB
+SQLITE=$SQLITE
+MIME_TYPES_CONFIG=$MIME_TYPES_CONFIG
+WEB_STATISTICS_TOOL=$WEB_STATISTICS_TOOL
+WEB_STATISTICS_CLI=$WEB_STATISTICS_CLI
+FPANEL_STATISTICS_TOOL=$FPANEL_STATISTICS_TOOL
+HOSTNAME_CONF=$HOSTNAME_CONF
+HOSTS_FILE=$HOSTS_FILE
+LOG_ROTATE_CONF=$LOG_ROTATE_CONF
+LOG_ROTATE_VHOST=$LOG_ROTATE_VHOST
+PROFTP_CONF=$PROFTP_CONF
+MY_CNF=$MY_CNF
+CRONTAB_FILE=$CRONTAB_FILE
+CRONTAB_DIR=$CRONTAB_DIR
+INIT_DIR=$INIT_DIR
+MYSQL_DIR=$MYSQL_DIR
+MAIL_DIR=$MAIL_DIR
+APPS_DIR=$APPS_DIR
+APACHE_DIR=$APACHE_DIR
+APACHE_DEFAULT_CONF=$APACHE_DEFAULT_CONF
+APACHE_VHOST_CONF=$APACHE_DIR/conf.d/zzz999_httpd.conf
+APACHE_DEFAULT_VHOST_CONF=$APACHE_DIR/conf.d/zzz002_httpd.conf
+APACHE_DBADMIN_PHPMYADMIN_VHOST_CONF=$APACHE_DIR/conf.d/zzz004_dbmyadmin.conf
+APACHE_DBADMIN_PHPPGADMIN_VHOST_CONF=$APACHE_DIR/conf.d/zzz004_dbpgadmin.conf
+APACHE_WEBMAIL_ROUNDCUBE_VHOST_CONF=$APACHE_DIR/conf.d/zzz005_webmail_rc.conf
+APACHE_NAME_VHOST_CONF=$APACHE_DIR/conf.d/zzz001_httpd.conf
+APACHE_USER=www-data
+APACHE_BIN=$APACHE_BIN
+APACHE_GROUP=$NOGROUP
+NOGROUP=$NOGROUP
+APACHE_INIT=$APACHE_INIT
+SYSTEM_PACKAGE_CONF=$SYSTEM_PACKAGE_CONF
+PANEL_HTTP_CONFIG_INI=$PANEL_HTTP_CONFIG_INI
+
+NGINX_DIR=$NGINX_DIR
+NGINX_BIN=$NGINX_BIN
+NGINX_DEFAULT_CONF=$NGINX_DEFAULT_CONF
+NGINX_VHOST_CONF=$NGINX_DIR/conf.d/zzz999_httpd.conf
+NGINX_DEFAULT_VHOST_IP_CONF=$NGINX_DIR/conf.d/zzz001_httpd.conf
+NGINX_DEFAULT_VHOST_CONF=$NGINX_DIR/conf.d/zzz002_httpd.conf
+
+PHP_FPM_DIR=$PHP_FPM_DIR
+PHP_FPM_CONF=$PHP_FPM_CONF
+PHP_FPM_WWW_CONF=$PHP_FPM_WWW_CONF
+PHP_FPM_VHOST_CONF=$PHP_FPM_VHOST_CONF
+PHP_FPM_RUN_DIR=$PHP_FPM_RUN_DIR
+
+PHP_TEMPLATE_DIR=$PANEL_DIR/core/templates/php
+PHP_TEMPLATE_INI=$PANEL_DIR/core/templates/php/php.ini
+BIND_DIR=$BIND_DIR
+BIND_ZONE_CONF=$BIND_DIR/domains.conf
+BIND_ZONE_DIR=$BIND_DIR/domains
+BIND_TEMPLATE_ORIG=$PANEL_DIR/core/templates/bind/domains.template
+BIND_TEMPLATE_ZONE=$BIND_DIR/domains.template
+VHOSTS_DIR=/var/www
+VHOSTS_DEFAULT_DIR=$VHOSTS_DIR/default
+USER_PASSWD=$USER_PASSWD
+USERADD=$USERADD
+USERDEL=$USERDEL
+USERMOD=$USERMOD
+GROUPADD=$GROUPADD
+GROUPDEL=$GROUPDEL
+GROUPMOD=$GROUPMOD
+USERTMPMAIL_DIR=$USERTMPMAIL_DIR
+USERTMPFILE=$USERTMPFILE
+IFCONFIG=$IFCONFIG
+ROUTE=$ROUTE
+NTPDATE=$NTPDATE
+NTPSERVER=$NTPSERVER
+NO_LOGIN=$NO_LOGIN
+BACKUP_EXT=$BACKUP_EXT
+SPAM_STARTUP=$SPAM_STARTUP
+SPAM_INIT=$SPAM_INIT
+SPAM_LOCAL=$SPAM_LOCAL
+SPAM_BLACK_LOCAL=$SPAM_BLACK_LOCAL
+SPAM_WHITE_LOCAL=$SPAM_WHITE_LOCAL
+SPAM_CLIENT=$SPAM_CLIENT
+SPAM_DAEMON=$SPAM_DAEMON
+VDELIVERMAIL=$VDELIVERMAIL
+VPASSWD=$VPASSWD
+VMAIL_USER=$VMAIL_USER
+VMAIL_GROUP=$VMAIL_GROUP
+PANEL_LOG=$PANEL_LOG
+PANEL_LOG_DIR=$PANEL_LOG_DIR
+NETCAT=$NETCAT
+ADMINMNG=$ADMINMNG
+APPINSTALLER=$APPINSTALLER
+BACKUPCLIENTMNG=$BACKUPCLIENTMNG
+BACKUPMNG=$BACKUPMNG
+BACKUPSRVMNG=$BACKUPSRVMNG
+COMPILE=$COMPILE
+CRONTABMNG=$CRONTABMNG
+DATEMNG=$DATEMNG
+DEBUG=$DEBUG
+DIRECTORYMNG=$DIRECTORYMNG
+DNSMNG=$DNSMNG
+DOMALIASMNG=$DOMALIASMNG
+FIXMNG=$FIXMNG
+FTPMNG=$FTPMNG
+LOGMNG=$LOGMNG
+MAILMNG=$MAILMNG
+MAILQUEUEMNG=$MAILQUEUEMNG
+MAILSRVMNG=$MAILSRVMNG
+MIGRATIONMNG=$MIGRATIONMNG
+NETWORKMNG=$NETWORKMNG
+PACKAGEMNG=$PACKAGEMNG
+PAGEMNG=$PAGEMNG
+PHPMNG=$PHPMNG
+PROTECTMNG=$PROTECTMNG
+SERVICESMNG=$SERVICESMNG
+SQLMNG=$SQLMNG
+SSLMNG=$SSLMNG
+SUBDIRECTORYMNG=$SUBDIRECTORYMNG
+SUBUSERMNG=$SUBUSERMNG
+SUBVHOSTMNG=$SUBVHOSTMNG
+USERMNG=$USERMNG
+VHOSTMNG=$VHOSTMNG
+WEBSRVMNG=$WEBSRVMNG
+WEBALIZERMNG=$WEBALIZERMNG
+AWSTATSMNG=$AWSTATSMNG
+WEBSTATISTICS=$WEBSTATISTICS
+WRAPPER=$WRAPPER
+FCRYPT=$FCRYPT
+DOMAIN_CONFIGS_DIR=$DOMAIN_CONFIGS_DIR
+AWSTATS_DIR=$AWSTATS_DIR
+WEBALIZER_DIR=$WEBALIZER_DIR
+DOMAIN_LOGS_DIR=$DOMAIN_LOGS_DIR
+PANEL_TMP_DIR=$PANEL_TMP_DIR"
+}
+
+
+check_root
+
+PROCESS="$1"
+
+case $PROCESS in
+	--debug)
+		shift
+		create_environments
+		;;
+esac
+
+

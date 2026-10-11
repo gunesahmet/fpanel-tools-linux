@@ -1,0 +1,1253 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler
+
+exec 2>/dev/null
+declare -A KEY VALUE
+
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+
+	if [ -x "$KWNG_ENV" ]
+		then
+			IFS='
+			'
+			export `$KWNG_ENV --debug | grep -v "^#"`
+			IFS=' '
+		else
+			$KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+			exit 1000
+	fi
+	if [ -f $SYSTEM_PACKAGE_CONF ]; then
+		. $SYSTEM_PACKAGE_CONF
+		else
+			$KWNG_LOG --error --code=1002 --message="Unable to load installed system packages. Please contact with system administrator."
+			exit 1002
+	fi
+
+	case "$SYSTEM_TYPE" in
+		debian|ubuntu)
+			if [ "$HTTPD_SERVER" = "apache" ]; then
+                            MODULES_BIN_DIR="/usr/lib/apache2/modules"
+                            MODULES_ENABLED_CONF_DIR="/etc/apache2/mods-enabled"
+                            MODULES_AVALIABLE_CONF_DIR="/etc/apache2/mods-available"
+                            ALL_MODULES=`ls $MODULES_AVALIABLE_CONF_DIR/*.load | sed -e's:'"$MODULES_AVALIABLE_CONF_DIR"'::g' -e 's/.load//g' -e 's/\///g' | tr "\n" " "`
+			elif [ "$HTTPD_SERVER" = "nginx" ]; then
+                            MODULES_BIN_DIR="/usr/lib/apache2/modules"
+                            MODULES_ENABLED_CONF_DIR="/etc/nginx/modules-enabled"
+                            MODULES_AVALIABLE_CONF_DIR="/usr/share/nginx/modules-available"
+                            ALL_MODULES=`ls $MODULES_AVALIABLE_CONF_DIR/*.conf | sed -e's:'"$MODULES_AVALIABLE_CONF_DIR"'::g' -e 's/.conf//g'  -e 's/\///g' | tr "\n" " "`
+			fi
+              ;;
+		centos)
+			if [ "$HTTPD_SERVER" = "apache" ]; then
+                            MODULES_BIN_DIR="/etc/httpd/modules"
+                            MODULES_ENABLED_CONF_DIR="/etc/httpd/mods-enabled"
+                            MODULES_AVALIABLE_CONF_DIR="/etc/httpd/mods-available"
+                            ALL_MODULES=`ls $MODULES_AVALIABLE_CONF_DIR/*.load | sed -e's:'"$MODULES_AVALIABLE_CONF_DIR"'::g' -e 's/.load//g' -e 's/\///g' | tr "\n" " "`
+			elif [ "$HTTPD_SERVER" = "nginx" ]; then
+                            MODULES_BIN_DIR="/usr/lib/apache2/modules"
+                            MODULES_ENABLED_CONF_DIR="/etc/apache2/mods-enabled"
+                            MODULES_AVALIABLE_CONF_DIR="/etc/apache2/mods-available"
+                            ALL_MODULES=`ls /usr/lib64/nginx/modules`
+			fi
+              ;;
+	esac
+
+	if [ "$ALL_MODULES" != "" ]; then
+              for index in "$ALL_MODULES"
+              do
+                     KEY[$index]="$index"
+              done
+	fi
+
+	if [ "$HTTPD_SERVER" = "apache" ]; then
+              KEY[php5_handler]="php5_handler"
+              KEY[perl_handler]="perl_handler"
+              KEY[python_handler]="python_handler"
+	fi
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]
+		then
+			$KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+			exit 1001
+	fi
+
+}
+
+function usage() {
+	echo "Usage" >/dev/null
+}
+
+function main_case() {
+	while [ "$1" != "" ]
+	do
+		case $1 in
+			# Json Data
+			--data=*)
+				DATA=`echo "$1" | sed 's/--data=//g'`
+			;;
+			--web-server=*)
+				WEB_SERVER_TYPE=`echo "$1" | sed 's/--web-server=//g'`
+			;;
+			# Settings icin parametreler
+			--keep-alive=*)
+				KEEP_ALIVE=`echo $1 | sed -e 's/--keep-alive=//g' -e 's/"//g'`
+			;;
+			--keep-alive-timeout=*)
+				KEEP_ALIVE_TIMEOUT=`echo $1 | sed -e 's/--keep-alive-timeout=//g' -e 's/"//g'`
+			;;
+			--server-timeout=*)
+				SERVER_TIMEOUT=`echo $1 | sed -e 's/--server-timeout=//g' -e 's/"//g'`
+			;;
+			--max-keep-alive-req=*)
+				MAX_KEEP_ALIVE_REQUESTS=`echo $1 | sed -e 's/--max-keep-alive-req=//g' -e 's/"//g'`
+			;;
+			--start-server=*)
+				PREFORK_START_SERVER=`echo $1 | sed -e 's/--start-server=//g' -e 's/"//g'`
+			;;
+			--min-spare-server=*)
+				PREFORK_MIN_SPARE_SERVERS=`echo $1 | sed -e 's/--min-spare-server=//g' -e 's/"//g'`
+			;;
+			--max-clients=*)
+				PREFORK_MAX_CLIENTS=`echo $1 | sed -e 's/--max-clients=//g' -e 's/"//g'`
+			;;
+			--max-req-per-child=*)
+				PREFORK_MAX_REQUESTS_PER_CHILD=`echo $1 | sed -e 's/--max-req-per-child=//g' -e 's/"//g'`
+			;;
+			# Nginx Ayarlari
+			--worker_processes=*)
+				WORKER_PROCESSES=`echo "$1" | sed 's/--worker_processes=//g'`
+			;;
+			--worker_connections=*)
+				WORKER_CONNECTIONS=`echo "$1" | sed 's/--worker_connections=//g'`
+			;;
+			--keepalive_timeout=*)
+				KEEPALIVE_TIMEOUT=`echo "$1" | sed 's/--keepalive_timeout=//g'`
+			;;
+			--types_hash_max_size=*)
+				TYPES_HASH_MAX_SIZE=`echo "$1" | sed 's/--types_hash_max_size=//g'`
+			;;
+			--server_names_hash_bucket_size=*)
+				SERVER_NAMES_HASH_BUCKET_SIZE=`echo "$1" | sed 's/--server_names_hash_bucket_size=//g'`
+			;;
+			--multi_accept=*)
+				MULTI_ACCEPT=`echo "$1" | sed 's/--multi_accept=//g'`
+			;;
+			--sendfile=*)
+				SENDFILE=`echo "$1" | sed 's/--sendfile=//g'`
+			;;
+			--tcp_nopush=*)
+				TCP_NOPUSH=`echo "$1" | sed 's/--tcp_nopush=//g'`
+			;;
+			--tcp_nodelay=*)
+				TCP_NODELAY=`echo "$1" | sed 's/--tcp_nodelay=//g'`
+			;;
+			--server_tokens=*)
+				SERVER_TOKENS=`echo "$1" | sed 's/--server_tokens=//g'`
+			;;
+			--server_name_in_redirect=*)
+				SERVER_NAME_IN_REDIRECT=`echo "$1" | sed 's/--server_name_in_redirect=//g'`
+			;;
+			--gzip=*)
+				GZIP=`echo "$1" | sed 's/--gzip=//g'`
+			;;
+			--gzip_vary=*)
+				GZIP_VARY=`echo "$1" | sed 's/--gzip_vary=//g'`
+			;;
+			--gzip_buffers=*)
+				GZIP_BUFFERS=`echo "$1" | sed 's/--gzip_buffers=//g'`
+			;;
+			--gzip_disable=*)
+				GZIP_DISABLE=`echo "$1" | sed 's/--gzip_disable=//g'`
+			;;
+			--gzip_proxied=*)
+				GZIP_PROXIED=`echo "$1" | sed 's/--gzip_proxied=//g'`
+			;;
+			--gzip_comp_level=*)
+				GZIP_COMP_LEVEL=`echo "$1" | sed 's/--gzip_comp_level=//g'`
+			;;
+			--gzip_http_version=*)
+				GZIP_HTTP_VERSION=`echo "$1" | sed 's/--gzip_http_version=//g'`
+			;;
+			--gzip_types=*)
+				GZIP_TYPES=`echo "$1" | sed 's/--gzip_types=//g'`
+			;;
+                     --file-ext=*)
+                            FILE_EXT=`echo "$1" | sed 's/--file-ext=//g'`
+                     ;;
+                     --file-ext-octet=*)
+                            FILE_EXT_OCTET=`echo "$1" | sed 's/--file-ext-octet=//g'`
+                     ;;
+              esac
+		shift
+	done
+}
+
+function write_json() {
+	echo "$1" | sed -e 's/,/","/g' -e 's/:/":"/g' -e 's/^/{"/g' -e 's/$/"}/g' # -e 's/ //g'
+}
+
+function apache_mime_type_show() {
+	JSON_DATA=`cat /etc/mime.types | grep -v "^#" | grep . | awk -F' ' '{print $1":"$2" "$3" "$4" "$5" "$6" "$7}' | sed -e 's/^/"/' -e 's/:/":"/g' -e 's/\s*$/"/g' | tr '\n' ',' | sed -e 's/,$//g'`
+}
+function nginx_mime_type_show() {
+	JSON_DATA=`cat /etc/nginx/mime.types | grep -v "#" | grep -v "types.*{" | grep -v "}" |grep . | awk -F' ' '{print $1":"$2" "$3" "$4" "$5" "$6" "$7}' | sed -e 's/^/"/' -e 's/:/":"/g' -e 's/\s*$/"/g' | tr '\n' ',' | sed -e 's/,$//g' | tr "\n" " "`
+}
+function mime_type_show() {
+	[[ "$HTTPD_SERVER" = "apache" ]] && apache_mime_type_show
+	[[ "$HTTPD_SERVER" = "nginx" ]] && nginx_mime_type_show
+	echo "{$JSON_DATA}" | base64
+
+}
+
+function mime_type_add_check_flag() {
+	if [ -z $FILE_EXT ] || [ -z $FILE_EXT_OCTET ]
+		then
+			$KWNG_LOG --error --code=7102 --message="Missing arguments"
+			echo "Error7102: Missing arguments"
+			exit 7102
+	fi
+}
+function apache_mime_type_add() {
+	echo "$FILE_EXT_OCTET                               $FILE_EXT" >> $MIME_TYPES_CONFIG
+}
+function nginx_mime_type_add() {
+	sed -i 's/}//g' /etc/nginx/mime.types
+	echo "    $FILE_EXT_OCTET                               $FILE_EXT" >> /etc/nginx/mime.types
+	echo "}" >> /etc/nginx/mime.types
+
+}
+function mime_type_add() {
+	[[ "$HTTPD_SERVER" = "apache" ]] && apache_mime_type_add
+	[[ "$HTTPD_SERVER" = "nginx" ]] && nginx_mime_type_add
+	$KWNG_LOG --success --code=7101 --message="Mime type added"
+}
+
+function mime_type_remove_check_flag() {
+	if [ -z $FILE_EXT ]
+		then
+			$KWNG_LOG --error --code=7103 --message="Missing arguments"
+			echo "Error7103: Missing arguments"
+			exit 7103
+	fi
+}
+function apache_mime_type_remove() {
+	# websrvmng "--remove-mimetype" "--file-ext=.php123" "--file-ext-octet=application/atom+xml"
+	FILE_EXT=`echo $FILE_EXT |sed 's/#/ /g'`
+	sed -i 's/^.*'"$FILE_EXT"'$//g' /etc/mime.types
+	sed -i '/^$/d' /etc/mime.types
+}
+function nginx_mime_type_remove() {
+	FILE_EXT=`echo $FILE_EXT |sed 's/#/ /g'`
+	sed -i 's/^.*'"$FILE_EXT"'$//g' /etc/nginx/mime.types
+	sed -i '/^$/d' /etc/mime.types
+}
+function mime_type_remove() {
+	[[ "$HTTPD_SERVER" = "apache" ]] && apache_mime_type_remove
+	[[ "$HTTPD_SERVER" = "nginx" ]] && nginx_mime_type_remove
+	$KWNG_LOG --success --code=7102 --message="Mime type removed"
+
+}
+
+function apache_init() {
+	apache_rewrite true
+	name_vhosts_reload
+}
+function nginx_init() {
+	name_vhosts_reload
+}
+function webserver_init() {
+	[[ "$HTTPD_SERVER" = "apache" ]] && apache_init
+	[[ "$HTTPD_SERVER" = "nginx" ]] && nginx_init
+	$KWNG_LOG --success --code=7103 --message="Apache initialized"
+}
+
+function apache_show_modules() {
+	# apache_init_modules
+
+	# Mod listesi
+	# actions alias asis auth_basic auth_digest authn_alias authn_anon authn_dbd authn_dbm authn_default authn_file authnz_ldap authz_dbm authz_default authz_groupfile authz_host authz_owner authz_user autoindex cache cern_meta cgi cgid charset_lite dav dav_fs dav_lock dbd deflate dir disk_cache dump_io env expires ext_filter fcgid file_cache filter headers ident imagemap include info ldap log_forensic mem_cache mime mime_magic negotiation perl php5 proxy_ajp proxy_balancer proxy proxy_connect proxy_ftp proxy_http rewrite setenvif speling ssl status substitute suexec unique_id userdir usertrack version vhost_alias
+	unset JSON_DATA
+
+	# PHP_MODULE="$MODULES_BIN_DIR/libphp5.so"
+
+
+	for index in ${!KEY[*]}
+	do
+		# Modul yuklu ve conf varsa on, yoksa off degeri verilecek.
+		if [ -f $MODULES_ENABLED_CONF_DIR/$index.load ]
+			then
+				VALUE[$index]="on"
+			else
+				VALUE[$index]="off"
+		fi
+
+		[ -z "$JSON_DATA" ] && JSON_DATA="$index:${VALUE[$index]}" || JSON_DATA="$JSON_DATA,$index:${VALUE[$index]}"
+
+	done
+
+
+}
+function nginx_show_modules() {
+	unset JSON_DATA
+
+	for index in ${!KEY[*]}
+	do
+              if [ -f $MODULES_ENABLED_CONF_DIR/*$index.conf ]; then
+                     VALUE[$index]="on"
+              else
+                     VALUE[$index]="off"
+              fi
+		[ -z "$JSON_DATA" ] && JSON_DATA="$index:${VALUE[$index]}" || JSON_DATA="$JSON_DATA,$index:${VALUE[$index]}"
+	done
+	JSON_DATA="$JSON_DATA"
+}
+function show_modules() {
+	[[ "$HTTPD_SERVER" = "apache" ]] && apache_show_modules
+	[[ "$HTTPD_SERVER" = "nginx" ]] && nginx_show_modules
+	write_json "$JSON_DATA"
+}
+
+function apache_load_modules() {
+	MODULE_NAME=`echo $1 | sed -e 's/=/ /g' -e 's/--//g'| awk '{print $1}'`
+	MODULE_STATUS=`echo $1 | sed 's/=/ /g' | awk '{print $2}'`
+       if [ -z "$MODULE_NAME" ]; then
+              $KWNG_LOG --error --code=7106 --message="Module name can not be empty"
+              exit 7106
+       fi
+	# echo $MODULE_NAME
+	# echo $MODULE_STATUS
+
+	# for index in ${!KEY[*]}
+	# do
+		# if [ "${VALUE[$index]}" = "on" ]
+			# then
+				# # echo ${VALUE[$index]}
+				# # Deger on olarak geldigi icin modulun conf dosyasi ilgili yere yerlestiriliyor...
+				# if [ -f $MODULES_AVALIABLE_CONF_DIR/$index.conf ]
+					# then
+						# cp -Rp $MODULES_AVALIABLE_CONF_DIR/$index.conf $MODULES_ENABLED_CONF_DIR/
+				# fi
+				# if [ -f $MODULES_AVALIABLE_CONF_DIR/$index.load ]
+					# then
+						# cp -Rp $MODULES_AVALIABLE_CONF_DIR/$index.load $MODULES_ENABLED_CONF_DIR/
+				# fi
+		# fi
+		# if [ "${VALUE[$index]}" = "off" ]
+			# then
+				# if [ -z "${VALUE[$index]}" ] || [ "${VALUE[$index]}" = "off" ]
+					# then
+						# # Deger off yada bos olarak geldigi icin modulun conf dosyasi ilgili yerden siliniyor eger varise...
+						# if [ -f $MODULES_ENABLED_CONF_DIR/$index.conf ]
+							# then
+								# rm -rf $MODULES_ENABLED_CONF_DIR/$index.conf
+						# fi
+						# if [ -f $MODULES_ENABLED_CONF_DIR/$index.load ]
+							# then
+								# rm -rf $MODULES_ENABLED_CONF_DIR/$index.load
+						# fi
+				# fi
+		# fi
+	# done
+	if [ "$MODULE_STATUS" = "off" ]
+       then
+              if [ -f $MODULES_ENABLED_CONF_DIR/$MODULE_NAME.conf ]
+              then
+                     rm -rf $MODULES_ENABLED_CONF_DIR/$MODULE_NAME.conf
+              fi
+              if [ -f $MODULES_ENABLED_CONF_DIR/$MODULE_NAME.load ]
+              then
+                     rm -rf $MODULES_ENABLED_CONF_DIR/$MODULE_NAME.load
+              fi
+       else
+              if [ -f $MODULES_AVALIABLE_CONF_DIR/$MODULE_NAME.conf ]
+              then
+                     cp -Rp $MODULES_AVALIABLE_CONF_DIR/$MODULE_NAME.conf $MODULES_ENABLED_CONF_DIR/
+              fi
+              if [ -f $MODULES_AVALIABLE_CONF_DIR/$MODULE_NAME.load ]
+              then
+                     cp -Rp $MODULES_AVALIABLE_CONF_DIR/$MODULE_NAME.load $MODULES_ENABLED_CONF_DIR/
+              fi
+	fi
+
+
+	# Rewrite ozel durumu
+	if [ "${VALUE[rewrite]}" = "on" ]; then
+              apache_rewrite true
+       else
+              apache_rewrite false
+	fi
+
+}
+function nginx_load_modules() {
+	MODULE_NAME=`echo $1 | sed -e 's/=/ /g' -e 's/--//g'| awk '{print $1}'`
+       MODULE_STATUS=`echo $1 | sed 's/=/ /g' | awk '{print $2}'`
+       if [ -z "$MODULE_NAME" ]; then
+              $KWNG_LOG --error --code=7106 --message="Module name can not be empty"
+              exit 7106
+       fi
+       if [ "$MODULE_STATUS" = "off" ]; then
+              if [ ! -z "$MODULE_NAME" ]; then
+                     PRIORITY="50"
+                     [ "$MODULE_NAME" == "mod-http-ndk" ] && PRIORITY="10"
+                     if [ -f $MODULES_ENABLED_CONF_DIR/"${PRIORITY}-${MODULE_NAME}.conf" ]; then
+                            rm -rf $MODULES_ENABLED_CONF_DIR/"${PRIORITY}-${MODULE_NAME}.conf"
+                     fi
+              fi
+       else
+              #mod-http-ndk icin 10 digerleri 50
+              if [ -f $MODULES_AVALIABLE_CONF_DIR/$MODULE_NAME.conf ]; then
+                     if [ ! -z "$MODULE_NAME" ]; then
+                            PRIORITY="50"
+                            [ "$MODULE_NAME" == "mod-http-ndk" ] && PRIORITY="10"
+                            ln -s $MODULES_AVALIABLE_CONF_DIR/$MODULE_NAME.conf $MODULES_ENABLED_CONF_DIR/"${PRIORITY}-${MODULE_NAME}.conf"
+                     fi
+              fi
+	fi
+
+}
+function load_modules() {
+       if [ -z "$HTTPD_SERVER" ]; then
+              $KWNG_LOG --error --code=7106 --message="Can not found installed any web server"
+              exit 7106
+       fi
+	[[ "$HTTPD_SERVER" = "apache" ]] && apache_load_modules "$@"
+	[[ "$HTTPD_SERVER" = "nginx" ]] && nginx_load_modules "$@"
+	$SERVICESMNG --reload --service=web
+	$KWNG_LOG --success --code=7106 --message="Web server modules loaded"
+}
+
+function apache_rewrite() {
+	# ReWrite icin ozel kural devreye giriyor..
+	if [ "$1" = "true" ]
+		then
+			cp -Rp $MODULES_AVALIABLE_CONF_DIR/rewrite.conf $MODULES_ENABLED_CONF_DIR/
+			sed -i 's/AllowOverride.*/AllowOverride All/g' $APACHE_DEFAULT_CONF
+		else
+			rm -rf $MODULES_ENABLED_CONF_DIR/rewrite.conf
+			sed -i 's/AllowOverride.*/AllowOverride None/g' $APACHE_DEFAULT_CONF
+	fi
+}
+
+function apache_name_vhosts_reload() {
+	DOMAINNAME=`hostname`
+
+	if [ ! -d $VHOSTS_DEFAULT_DIR ]
+		then
+			mkdir -p $VHOSTS_DEFAULT_DIR
+	fi
+
+	echo "# FPanel - Dont edit this file." > $APACHE_NAME_VHOST_CONF
+	echo "# FPanel - Dont edit this file." > $APACHE_DEFAULT_VHOST_CONF
+
+	while read line
+	do
+		[ "$line" = "127.0.0.1" ] && continue
+		IPADDR="$line"
+
+		echo -en "NameVirtualHost $IPADDR:80\nNameVirtualHost $IPADDR:443\n" >>  $APACHE_NAME_VHOST_CONF
+		echo "
+<VirtualHost $IPADDR:80>
+	UseCanonicalName Off
+	ServerAdmin  "admin@localhost"
+	DocumentRoot $VHOSTS_DEFAULT_DIR
+
+	<Directory $VHOSTS_DEFAULT_DIR>
+		Options -Indexes -Includes +ExecCGI
+	</Directory>
+</VirtualHost>" >> $APACHE_DEFAULT_VHOST_CONF
+
+	done < <(ip addr | grep -w "inet" | awk -F' ' '{print $2}' | awk -F'/' '{print $1}')
+}
+function nginx_name_vhosts_reload() {
+#	if [ ! -d $VHOSTS_DEFAULT_DIR ]
+#		then
+#			mkdir -p $VHOSTS_DEFAULT_DIR
+#	fi
+#
+#	NGINX_USER="www-data"
+#	NGINX_GROUP="nogroup"
+#	[[ "$SYSTEM_TYPE" = "centos" ]] && PHP_POOL_DIR="/etc/php-fpm.d"
+#	[[ "$SYSTEM_TYPE" = "centos" ]] && NGINX_USER="nginx"
+#	[[ "$SYSTEM_TYPE" = "centos" ]] && NGINX_GROUP="nobody"
+#
+#	NGINX_DIR="/etc/nginx"
+#	NGINX_INIT="/etc/init.d/nginx"
+#
+#	if [ -d "$VHOSTS_DIR/dbmyadmin" ]; then
+#		echo "[dbmyadmin]
+#listen = $PHP_FPM_RUN_DIR/dbmyadmin.sock
+#listen.owner = $NGINX_USER
+#listen.group = $NGINX_GROUP
+#listen.mode = 0660
+#user = $NGINX_USER
+#group = $NGINX_GROUP
+#pm = dynamic
+#pm.max_children = 50
+#pm.start_servers = 20
+#pm.min_spare_servers = 5
+#pm.max_spare_servers = 35
+#chdir = /var/www/dbmyadmin
+#php_admin_value[open_basedir] = $VHOSTS_DIR/dbmyadmin:/tmp
+#php_admin_value[disable_functions] = dl,passthru,parse_ini_file,show_source
+#" > $PHP_POOL_DIR/dbmyadmin.conf
+#	fi
+#
+#	if [ -d "$VHOSTS_DIR/webmail" ]; then
+#		echo "[webmail_rc]
+#listen = $PHP_FPM_RUN_DIR/webmail_rc.sock
+#listen.owner = $NGINX_USER
+#listen.group = $NGINX_GROUP
+#listen.mode = 0660
+#user = $NGINX_USER
+#group = $NGINX_GROUP
+#pm = dynamic
+#pm.max_children = 50
+#pm.start_servers = 20
+#pm.min_spare_servers = 5
+#pm.max_spare_servers = 35
+#chdir = /var/www/webmail
+#php_admin_value[open_basedir] = $VHOSTS_DIR/webmail:/tmp
+#php_admin_value[disable_functions] = dl,passthru,parse_ini_file,show_source
+#" > $PHP_POOL_DIR/webmail_rc.conf
+#	fi
+
+#	if [ -d "$VHOSTS_DIR/dbpgadmin" ]; then
+#		echo "[dbpgadmin]
+#listen = $PHP_FPM_RUN_DIR/dbpgadmin.sock
+#listen.owner = $NGINX_USER
+#listen.group = $NGINX_GROUP
+#listen.mode = 0660
+#user = $NGINX_USER
+#group = $NGINX_GROUP
+#pm = dynamic
+#pm.max_children = 50
+#pm.start_servers = 20
+#pm.min_spare_servers = 5
+#pm.max_spare_servers = 35
+#chdir = /var/www/dbpgadmin
+#php_admin_value[open_basedir] = $VHOSTS_DIR/dbpgadmin:/tmp
+#php_admin_value[disable_functions] = dl,passthru,parse_ini_file,show_source
+#" > $PHP_POOL_DIR/dbpgadmin.conf
+#	fi
+
+
+#	if [ ! -f $NGINX_DIR/conf.d/zzz999_httpd.conf ]
+#		then
+#		echo "# FPanel - Dont edit this file." > $NGINX_DIR/conf.d/zzz999_httpd.conf
+#	fi
+#
+#	echo "#FPanel - Dont edit this file.
+#server {
+#	include /etc/nginx/conf.d/zzz001_httpd.conf;
+#	server_name _;
+#	location / {
+#		root $VHOSTS_DIR/default;
+#		index  index.php index.html index.htm;
+#	}
+#" > $NGINX_DIR/conf.d/zzz002_httpd.conf
+
+#if [ -d "$VHOSTS_DIR/webmail" ]; then
+#echo "
+#	location /webmail {
+#		root $VHOSTS_DIR/;
+#		index  index.php index.html index.htm;
+#		location ~ \.php$ {
+#			fastcgi_split_path_info ^(.+?\.php)(/.*)?$;
+#			fastcgi_pass unix:$PHP_FPM_RUN_DIR/webmail_rc.sock;
+#			fastcgi_index index.php;
+#			include fastcgi_params;
+#			fastcgi_param  SCRIPT_FILENAME  \$document_root\$fastcgi_script_name;
+#			fastcgi_param  QUERY_STRING     \$query_string;
+#			fastcgi_param  REQUEST_METHOD   \$request_method;
+#			fastcgi_param  CONTENT_TYPE     \$content_type;
+#			fastcgi_param  CONTENT_LENGTH   \$content_length;
+#			fastcgi_intercept_errors        on;
+#			fastcgi_ignore_client_abort     off;
+#			fastcgi_connect_timeout 60;
+#			fastcgi_send_timeout 180;
+#			fastcgi_read_timeout 180;
+#			fastcgi_buffer_size 128k;
+#			fastcgi_buffers 4 256k;
+#			fastcgi_busy_buffers_size 256k;
+#			fastcgi_temp_file_write_size 256k;
+#		}
+#	}
+#" >> $NGINX_DIR/conf.d/zzz002_httpd.conf
+#fi
+#
+#if [ -d "$VHOSTS_DIR/dbmyadmin" ]; then
+#echo "
+#	location /dbmyadmin {
+#		root $VHOSTS_DIR/;
+#		index  index.php index.html index.htm;
+#		location ~ \.php$ {
+#			fastcgi_split_path_info ^(.+?\.php)(/.*)?$;
+#			fastcgi_pass unix:$PHP_FPM_RUN_DIR/dbmyadmin.sock;
+#			fastcgi_index index.php;
+#			include fastcgi_params;
+#			fastcgi_param  SCRIPT_FILENAME  \$document_root\$fastcgi_script_name;
+#			fastcgi_param  QUERY_STRING     \$query_string;
+#			fastcgi_param  REQUEST_METHOD   \$request_method;
+#			fastcgi_param  CONTENT_TYPE     \$content_type;
+#			fastcgi_param  CONTENT_LENGTH   \$content_length;
+#			fastcgi_intercept_errors        on;
+#			fastcgi_ignore_client_abort     off;
+#			fastcgi_connect_timeout 60;
+#			fastcgi_send_timeout 180;
+#			fastcgi_read_timeout 180;
+#			fastcgi_buffer_size 128k;
+#			fastcgi_buffers 4 256k;
+#			fastcgi_busy_buffers_size 256k;
+#			fastcgi_temp_file_write_size 256k;
+#		}
+#	}
+#" >> $NGINX_DIR/conf.d/zzz002_httpd.conf
+#fi
+#
+#if [ -d "$VHOSTS_DIR/dbpgadmin" ]; then
+#echo "
+#	location /dbpgadmin {
+#		root $VHOSTS_DIR/;
+#		index  index.php index.html index.htm;
+#		location ~ \.php$ {
+#			fastcgi_split_path_info ^(.+?\.php)(/.*)?$;
+#			fastcgi_pass unix:$PHP_FPM_RUN_DIR/dbpgadmin.sock;
+#			fastcgi_index index.php;
+#			include fastcgi_params;
+#			fastcgi_param  SCRIPT_FILENAME  \$document_root\$fastcgi_script_name;
+#			fastcgi_param  QUERY_STRING     \$query_string;
+#			fastcgi_param  REQUEST_METHOD   \$request_method;
+#			fastcgi_param  CONTENT_TYPE     \$content_type;
+#			fastcgi_param  CONTENT_LENGTH   \$content_length;
+#			fastcgi_intercept_errors        on;
+#			fastcgi_ignore_client_abort     off;
+#			fastcgi_connect_timeout 60;
+#			fastcgi_send_timeout 180;
+#			fastcgi_read_timeout 180;
+#			fastcgi_buffer_size 128k;
+#			fastcgi_buffers 4 256k;
+#			fastcgi_busy_buffers_size 256k;
+#			fastcgi_temp_file_write_size 256k;
+#		}
+#	}
+#" >> $NGINX_DIR/conf.d/zzz002_httpd.conf
+#fi
+
+#echo "
+#	error_page 500 502 503 504 /50x.html;
+#	location = /50x.html {
+#		root /var/www/error_page;
+#	}
+#	location ~ /\.ht {
+#		deny all;
+#	}
+#}
+#" >> $NGINX_DIR/conf.d/zzz002_httpd.conf
+
+
+	# Sites enabled dizini nginx confundan kaldiriliyor
+	sed -i 's/include \/etc\/nginx\/sites-enabled.*//g' $NGINX_DIR/nginx.conf
+
+	# Sites dizinleri kaldiriliyor
+	rm -rf $NGINX_DIR/sites-enabled >/dev/null
+	rm -rf $NGINX_DIR/sites-available >/dev/null
+
+
+	# Virtual hostlarin calismasi icin default ipler yaziliyor
+#	echo "# FPanel - Dont edit this file." > $NGINX_DIR/conf.d/zzz001_httpd.conf
+#	while read line
+#	do
+#		[ "$line" = "127.0.0.1" ] && continue
+#		IPADDR="$line"
+#		echo "listen $IPADDR:80;" >> $NGINX_DIR/conf.d/zzz001_httpd.conf
+#
+#	done < <(ip addr | grep -w "inet" | awk -F' ' '{print $2}' | awk -F'/' '{print $1}')
+
+
+}
+function name_vhosts_reload() {
+	[[ "$HTTPD_SERVER" = "apache" ]] && apache_name_vhosts_reload
+	[[ "$HTTPD_SERVER" = "nginx" ]] && nginx_name_vhosts_reload
+
+	[[ "$HTTPD_SERVER" = "nginx" ]] && $SERVICESMNG --reload --service=php_fpm
+	$SERVICESMNG --reload --service=web
+	$KWNG_LOG --success --code=7105 --message="Apache virtual hosts reloaded"
+}
+
+function apache_show_settings_debian() {
+	# for Prefork
+	PREFORK=`cat $APACHE_DEFAULT_CONF | sed  '/<IfModule worker.c>.*/,/<\/IfModule>$/s/^/#/'`
+
+	KEEP_ALIVE=`cat $APACHE_DEFAULT_CONF | grep "^KeepAlive " | awk '{print $2}'`
+	KEEP_ALIVE_TIMEOUT=`cat $APACHE_DEFAULT_CONF | grep "^KeepAliveTimeout " | awk '{print $2}'`
+	MAX_KEEP_ALIVE_REQUESTS=`cat $APACHE_DEFAULT_CONF | grep "^MaxKeepAliveRequests " | awk '{print $2}'`
+	SERVER_TIMEOUT=`cat $APACHE_DEFAULT_CONF | grep "^Timeout " | awk '{print $2}'`
+
+	PREFORK_START_SERVER=`echo "$PREFORK" | grep ^StartServers | awk '{print $2}'`
+	PREFORK_MIN_SPARE_SERVERS=`echo "$PREFORK" | grep ^MinSpareServers | awk '{print $2}'`
+	PREFORK_MAX_CLIENTS=`echo "$PREFORK" | grep ^MaxRequestWorkers | awk '{print $2}'`
+	PREFORK_MAX_REQUESTS_PER_CHILD=`echo "$PREFORK" | grep ^MaxConnectionsPerChild | awk '{print $2}'`
+
+	if [ -z $PREFORK_START_SERVER ]
+		then
+		if [ -f $MODULES_ENABLED_CONF_DIR/mpm_prefork.conf ]
+			then
+
+				PREFORK_START_SERVER=`cat "$MODULES_ENABLED_CONF_DIR/mpm_prefork.conf" | grep "StartServers" | grep -v "#" | awk '{print $2}'`
+				PREFORK_MIN_SPARE_SERVERS=`cat "$MODULES_ENABLED_CONF_DIR/mpm_prefork.conf" | grep MinSpareServers | grep -v "#" | awk '{print $2}'`
+				PREFORK_MAX_CLIENTS=`cat "$MODULES_ENABLED_CONF_DIR/mpm_prefork.conf" | grep MaxRequestWorkers | grep -v "#" | awk '{print $2}'`
+				PREFORK_MAX_REQUESTS_PER_CHILD=`cat "$MODULES_ENABLED_CONF_DIR/mpm_prefork.conf" | grep MaxConnectionsPerChild | grep -v "#" | awk '{print $2}'`
+		fi
+	fi
+	# echo $PREFORK_START_SERVER
+	# echo $PREFORK_MIN_SPARE_SERVERS
+	# echo $PREFORK_MAX_CLIENTS
+	# echo $PREFORK_MAX_REQUESTS_PER_CHILD
+	# echo $KEEP_ALIVE
+	# echo $KEEP_ALIVE_TIMEOUT
+	# echo $SERVER_TIMEOUT
+	# echo $MAX_KEEP_ALIVE_REQUESTS
+	JSON_DATA="{\"keep_alive\":\"$KEEP_ALIVE\",\"keep_alive_timeout\":\"$KEEP_ALIVE_TIMEOUT\",\"server_timeout\":\"$SERVER_TIMEOUT\",\"max_keep_alive_requests\":\"$MAX_KEEP_ALIVE_REQUESTS\",\"start_server\":\"$PREFORK_START_SERVER\",\"min_spare_servers\":\"$PREFORK_MIN_SPARE_SERVERS\",\"max_clients\":\"$PREFORK_MAX_CLIENTS\",\"max_requests_per_childs\":\"$PREFORK_MAX_REQUESTS_PER_CHILD\"}"
+	echo $JSON_DATA
+}
+function apache_show_settings_centos() {
+	# for Prefork
+	PREFORK=`cat $APACHE_DIR/conf.d/general.conf | sed  '/<IfModule worker.c>.*/,/<\/IfModule>$/s/^/#/'`
+
+	KEEP_ALIVE=`cat $APACHE_DIR/conf.d/general.conf | grep "^KeepAlive " | awk '{print $2}'`
+	KEEP_ALIVE_TIMEOUT=`cat $APACHE_DIR/conf.d/general.conf | grep "^KeepAliveTimeout " | awk '{print $2}'`
+	MAX_KEEP_ALIVE_REQUESTS=`cat $APACHE_DIR/conf.d/general.conf | grep "^MaxKeepAliveRequests " | awk '{print $2}'`
+	SERVER_TIMEOUT=`cat $APACHE_DIR/conf.d/general.conf | grep "^Timeout " | awk '{print $2}'`
+
+	PREFORK_START_SERVER=`echo "$PREFORK" | grep ^StartServers | awk '{print $2}'`
+	PREFORK_MIN_SPARE_SERVERS=`echo "$PREFORK" | grep ^MinSpareServers | awk '{print $2}'`
+	PREFORK_MAX_CLIENTS=`echo "$PREFORK" | grep ^MaxRequestWorkers | awk '{print $2}'`
+	PREFORK_MAX_REQUESTS_PER_CHILD=`echo "$PREFORK" | grep ^MaxConnectionsPerChild | awk '{print $2}'`
+
+	if [ -z $PREFORK_START_SERVER ]
+		then
+		if [ -f $MODULES_ENABLED_CONF_DIR/mpm_prefork.conf ]
+			then
+
+				PREFORK_START_SERVER=`cat "$MODULES_ENABLED_CONF_DIR/mpm_prefork.conf" | grep "StartServers" | grep -v "#" | awk '{print $2}'`
+				PREFORK_MIN_SPARE_SERVERS=`cat "$MODULES_ENABLED_CONF_DIR/mpm_prefork.conf" | grep MinSpareServers | grep -v "#" | awk '{print $2}'`
+				PREFORK_MAX_CLIENTS=`cat "$MODULES_ENABLED_CONF_DIR/mpm_prefork.conf" | grep MaxRequestWorkers | grep -v "#" | awk '{print $2}'`
+				PREFORK_MAX_REQUESTS_PER_CHILD=`cat "$MODULES_ENABLED_CONF_DIR/mpm_prefork.conf" | grep MaxConnectionsPerChild | grep -v "#" | awk '{print $2}'`
+		fi
+	fi
+	# echo $PREFORK_START_SERVER
+	# echo $PREFORK_MIN_SPARE_SERVERS
+	# echo $PREFORK_MAX_CLIENTS
+	# echo $PREFORK_MAX_REQUESTS_PER_CHILD
+	# echo $KEEP_ALIVE
+	# echo $KEEP_ALIVE_TIMEOUT
+	# echo $SERVER_TIMEOUT
+	# echo $MAX_KEEP_ALIVE_REQUESTS
+	JSON_DATA="{\"keep_alive\":\"$KEEP_ALIVE\",\"keep_alive_timeout\":\"$KEEP_ALIVE_TIMEOUT\",\"server_timeout\":\"$SERVER_TIMEOUT\",\"max_keep_alive_requests\":\"$MAX_KEEP_ALIVE_REQUESTS\",\"start_server\":\"$PREFORK_START_SERVER\",\"min_spare_servers\":\"$PREFORK_MIN_SPARE_SERVERS\",\"max_clients\":\"$PREFORK_MAX_CLIENTS\",\"max_requests_per_childs\":\"$PREFORK_MAX_REQUESTS_PER_CHILD\"}"
+	echo $JSON_DATA
+}
+function apache_show_settings() {
+	case "$SYSTEM_TYPE" in
+		debian|ubuntu)
+		       apache_show_settings_debian
+		;;
+              centos)
+                     apache_show_settings_centos
+              ;;
+       esac
+}
+function nginx_show_settings() {
+	JSON_DATA=""
+	### General ###
+	# worker_processes 4;
+	NGINX_CONFIG=`cat $NGINX_DEFAULT_CONF`
+	WORKER_PROCESSES=`echo $NGINX_CONFIG | grep "\<worker_processes\>" | sed 's/worker_processes//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"worker_processes\":\"$WORKER_PROCESSES\","
+	### Events ###
+	# worker_connections 768;
+	WORKER_CONNECTIONS=`echo $NGINX_CONFIG | grep "\<worker_connections\>" | sed 's/worker_connections//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"worker_connections\":\"$WORKER_CONNECTIONS\","
+	# multi_accept on;
+	MULTI_ACCEPT=`echo $NGINX_CONFIG | grep "\<multi_accept\>" | sed 's/multi_accept//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"multi_accept\":\"$MULTI_ACCEPT\","
+
+	### http ###
+	# sendfile on;
+	SENDFILE=`echo $NGINX_CONFIG | grep "\<sendfile\>" | sed 's/sendfile//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"sendfile\":\"$SENDFILE\","
+	# tcp_nopush on;
+	TCP_NOPUSH=`echo $NGINX_CONFIG | grep "\<tcp_nopush\>" | sed 's/tcp_nopush//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"tcp_nopush\":\"$TCP_NOPUSH\","
+	# tcp_nodelay on;
+	TCP_NODELAY=`echo $NGINX_CONFIG | grep "\<tcp_nodelay\>" | sed 's/tcp_nodelay//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"tcp_nodelay\":\"$TCP_NODELAY\","
+	# keepalive_timeout 65;
+	KEEPALIVE_TIMEOUT=`echo $NGINX_CONFIG | grep "\<keepalive_timeout\>" | sed 's/keepalive_timeout//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"keepalive_timeout\":\"$KEEPALIVE_TIMEOUT\","
+	# types_hash_max_size 2048;
+	TYPES_HASH_MAX_SIZE=`echo $NGINX_CONFIG | grep "\<types_hash_max_size\>" | sed 's/types_hash_max_size//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"types_hash_max_size\":\"$TYPES_HASH_MAX_SIZE\","
+	# server_tokens off;
+	SERVER_TOKENS=`echo $NGINX_CONFIG | grep "\<server_tokens\>" | sed 's/server_tokens//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"server_tokens\":\"$SERVER_TOKENS\","
+	# server_names_hash_bucket_size 64;
+	SERVER_NAMES_HASH_BUCKET_SIZE=`echo $NGINX_CONFIG | grep "\<server_names_hash_bucket_size\>" | sed 's/server_names_hash_bucket_size//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"server_names_hash_bucket_size\":\"$SERVER_NAMES_HASH_BUCKET_SIZE\","
+	# server_name_in_redirect off;
+	SERVER_NAME_IN_REDIRECT=`echo $NGINX_CONFIG | grep "\<server_name_in_redirect\>" | sed 's/server_name_in_redirect//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"server_name_in_redirect\":\"$SERVER_NAME_IN_REDIRECT\","
+
+	# Gzip
+	# gzip on;
+	GZIP=`echo $NGINX_CONFIG | grep "\<gzip\>" | sed 's/gzip//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"gzip\":\"$GZIP\","
+	# gzip_disable "msie6";
+	GZIP_DISABLE=`echo $NGINX_CONFIG | grep "\<gzip_disable\>" | sed 's/gzip_disable//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' -e 's/"//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"gzip_disable\":\"$GZIP_DISABLE\","
+
+	# gzip_vary on;
+	GZIP_VARY=`echo $NGINX_CONFIG | grep "\<gzip_vary\>" | sed 's/gzip_vary//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"gzip_vary\":\"$GZIP_VARY\","
+	# gzip_proxied any;
+	GZIP_PROXIED=`echo $NGINX_CONFIG | grep "\<gzip_proxied\>" | sed 's/gzip_proxied//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"gzip_proxied\":\"$GZIP_PROXIED\","
+	# gzip_comp_level 6;
+	GZIP_COMP_LEVEL=`echo $NGINX_CONFIG | grep "\<gzip_comp_level\>" | sed 's/gzip_comp_level//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"gzip_comp_level\":\"$GZIP_COMP_LEVEL\","
+	# gzip_buffers 16 8k;
+	GZIP_BUFFERS=`echo $NGINX_CONFIG | grep "\<gzip_buffers\>" | sed 's/gzip_buffers//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"gzip_buffers\":\"$GZIP_BUFFERS\","
+	# gzip_http_version 1.1;
+	GZIP_HTTP_VERSION=`echo $NGINX_CONFIG | grep "\<gzip_http_version\>" | sed 's/gzip_http_version//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"gzip_http_version\":\"$GZIP_HTTP_VERSION\","
+	# gzip_types text/plain text/css application/json application/x-javascript text/xml application/xml application/xml+rss text/javascript;
+	GZIP_TYPES=`echo $NGINX_CONFIG | grep "\<gzip_types\>" | sed 's/gzip_types//g' | sed -e 's/^[ \t]*//' -e 's/\n//g' -e 's/;//g' | grep -v "#"`
+	JSON_DATA="$JSON_DATA\"gzip_types\":\"$GZIP_TYPES\""
+
+	echo "{$JSON_DATA}"
+
+
+}
+function show_settings() {
+	[[ "$HTTPD_SERVER" = "apache" ]] && apache_show_settings
+	[[ "$HTTPD_SERVER" = "nginx" ]] && nginx_show_settings
+}
+
+function apache_save_settings_debian() {
+       TMP_VAR=`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 13 ; echo ''`
+       cp -rf $APACHE_DEFAULT_CONF $PANEL_TMP_DIR/apache.conf.$TMP_VAR.tmp
+
+       if [ ! -z $KEEP_ALIVE ]
+       then
+              if [ "$KEEP_ALIVE" = "on" ]
+              then
+                     KEEP_ALIVE="KeepAlive On"
+              else
+                     KEEP_ALIVE="KeepAlive Off"
+              fi
+              sed -i 's/^KeepAlive .*/'"$KEEP_ALIVE"'/g' $APACHE_DEFAULT_CONF
+       fi
+
+       if [ ! -z $KEEP_ALIVE_TIMEOUT ]
+       then
+              KEEP_ALIVE_TIMEOUT="KeepAliveTimeout $KEEP_ALIVE_TIMEOUT"
+              sed -i 's/^KeepAliveTimeout .*/'"$KEEP_ALIVE_TIMEOUT"'/g' $APACHE_DEFAULT_CONF
+       fi
+
+       if [ ! -z $SERVER_TIMEOUT ]
+       then
+              SERVER_TIMEOUT="Timeout $SERVER_TIMEOUT"
+              sed -i 's/^Timeout .*/'"$SERVER_TIMEOUT"'/g' $APACHE_DEFAULT_CONF
+       fi
+
+
+       if [ ! -z $MAX_KEEP_ALIVE_REQUESTS ]
+       then
+              MAX_KEEP_ALIVE_REQUESTS="MaxKeepAliveRequests $MAX_KEEP_ALIVE_REQUESTS"
+              sed -i 's/^MaxKeepAliveRequests .*/'"$MAX_KEEP_ALIVE_REQUESTS"'/g' $APACHE_DEFAULT_CONF
+       fi
+
+       if [ "$SYSTEM_VERSION" == "10" ]
+       then
+              if [ -f $MODULES_ENABLED_CONF_DIR/mpm_prefork.conf ]
+              then
+                     if [ ! -z $PREFORK_START_SERVER ]
+                     then
+                            sed -i "/^<IfModule mpm_prefork_module*/,/^<\/IfModule>/ {
+                            /StartServers/        s/[0-9][0-9]*/"$PREFORK_START_SERVER"/
+                            }" $MODULES_ENABLED_CONF_DIR/mpm_prefork.conf
+                     fi
+
+                     if [ ! -z $PREFORK_MIN_SPARE_SERVERS ]
+                     then
+                            sed -i "/^<IfModule mpm_prefork_module*/,/^<\/IfModule>/ {
+                            /MinSpareServers/      s/[0-9][0-9]*/"$PREFORK_MIN_SPARE_SERVERS"/
+                            }" $MODULES_ENABLED_CONF_DIR/mpm_prefork.conf
+                     fi
+
+                     if [ ! -z $PREFORK_MAX_CLIENTS ]
+                     then
+                            sed -i "/^<IfModule mpm_prefork_module*/,/^<\/IfModule>/ {
+                            /MaxRequestWorkers/          s/[0-9][0-9]*/"$PREFORK_MAX_CLIENTS"/
+                            }" $MODULES_ENABLED_CONF_DIR/mpm_prefork.conf
+                     fi
+
+                     if [ ! -z $PREFORK_MAX_REQUESTS_PER_CHILD ]
+                     then
+                            sed -i "/^<IfModule mpm_prefork_module*/,/^<\/IfModule>/ {
+                            /MaxConnectionsPerChild/ s/[0-9][0-9]*/"$PREFORK_MAX_REQUESTS_PER_CHILD"/
+                            }" $MODULES_ENABLED_CONF_DIR/mpm_prefork.conf
+                     fi
+              fi
+       fi
+       $APACHE_BIN configtest > /dev/null 2>&1
+       RETVAL=$?
+
+       if [ "$RETVAL" != "0" ]
+       then
+              mv $PANEL_TMP_DIR/apache.conf.$TMP_VAR.tmp $APACHE_DEFAULT_CONF
+              $KWNG_LOG --error --code=7103 --message="Config test failed. Detail"
+              echo "Error7103: Config test failed."
+              exit 7103
+       fi
+}
+function apache_save_settings_centos() {
+       TMP_VAR=`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 13 ; echo ''`
+       cp -rf $APACHE_DIR/conf.d/general.conf $PANEL_TMP_DIR/apache.general.conf.$TMP_VAR.tmp
+
+       if [ ! -z $KEEP_ALIVE ]
+       then
+              if [ "$KEEP_ALIVE" = "on" ]
+              then
+                     KEEP_ALIVE="KeepAlive On"
+              else
+                     KEEP_ALIVE="KeepAlive Off"
+              fi
+
+              sed -i 's/^KeepAlive .*/'"$KEEP_ALIVE"'/g' $APACHE_DIR/conf.d/general.conf
+       fi
+
+       if [ ! -z $KEEP_ALIVE_TIMEOUT ]
+       then
+              KEEP_ALIVE_TIMEOUT="KeepAliveTimeout $KEEP_ALIVE_TIMEOUT"
+              sed -i 's/^KeepAliveTimeout .*/'"$KEEP_ALIVE_TIMEOUT"'/g' $APACHE_DIR/conf.d/general.conf
+       fi
+
+       if [ ! -z $SERVER_TIMEOUT ]
+       then
+              SERVER_TIMEOUT="Timeout $SERVER_TIMEOUT"
+              sed -i 's/^Timeout .*/'"$SERVER_TIMEOUT"'/g' $APACHE_DIR/conf.d/general.conf
+       fi
+
+       if [ ! -z $MAX_KEEP_ALIVE_REQUESTS ]
+       then
+              MAX_KEEP_ALIVE_REQUESTS="MaxKeepAliveRequests $MAX_KEEP_ALIVE_REQUESTS"
+              sed -i 's/^MaxKeepAliveRequests .*/'"$MAX_KEEP_ALIVE_REQUESTS"'/g' $APACHE_DIR/conf.d/general.conf
+       fi
+
+       if [ -f $MODULES_ENABLED_CONF_DIR/mpm_prefork.conf ]
+              then
+              if [ ! -z $PREFORK_START_SERVER ]
+                     then
+                     sed -i "/^<IfModule mpm_prefork_module*/,/^<\/IfModule>/ {
+                            /StartServers/        s/[0-9][0-9]*/"$PREFORK_START_SERVER"/
+                     }" $MODULES_ENABLED_CONF_DIR/mpm_prefork.conf
+              fi
+
+              if [ ! -z $PREFORK_MIN_SPARE_SERVERS ]
+              then
+                     sed -i "/^<IfModule mpm_prefork_module*/,/^<\/IfModule>/ {
+                            /MinSpareServers/      s/[0-9][0-9]*/"$PREFORK_MIN_SPARE_SERVERS"/
+                     }" $MODULES_ENABLED_CONF_DIR/mpm_prefork.conf
+              fi
+
+              if [ ! -z $PREFORK_MAX_CLIENTS ]
+              then
+                     sed -i "/^<IfModule mpm_prefork_module*/,/^<\/IfModule>/ {
+                            /MaxRequestWorkers/          s/[0-9][0-9]*/"$PREFORK_MAX_CLIENTS"/
+                     }" $MODULES_ENABLED_CONF_DIR/mpm_prefork.conf
+              fi
+
+              if [ ! -z $PREFORK_MAX_REQUESTS_PER_CHILD ]
+              then
+                     sed -i "/^<IfModule mpm_prefork_module*/,/^<\/IfModule>/ {
+                            /MaxConnectionsPerChild/ s/[0-9][0-9]*/"$PREFORK_MAX_REQUESTS_PER_CHILD"/
+                     }" $MODULES_ENABLED_CONF_DIR/mpm_prefork.conf
+              fi
+       fi
+
+       $APACHE_BIN -t > /dev/null 2>&1
+       RETVAL=$?
+
+       if [ "$RETVAL" != "0" ]
+       then
+              mv $PANEL_TMP_DIR/apache.general.conf.$TMP_VAR.tmp $APACHE_DIR/conf.d/general.conf
+              $KWNG_LOG --error --code=7103 --message="Config test failed. Detail"
+              echo "Error7103: Config test failed."
+              exit 7103
+       fi
+}
+function apache_save_settings() {
+	case "$SYSTEM_TYPE" in
+		debian|ubuntu)
+		       apache_save_settings_debian
+		;;
+              centos)
+                     apache_save_settings_centos
+              ;;
+       esac
+}
+function nginx_save_settings() {
+	if [ ! -f $NGINX_DEFAULT_CONF.tmp ]
+		then
+		rm -rf $NGINX_DEFAULT_CONF.tmp
+	fi
+	cp -rf $NGINX_DEFAULT_CONF $NGINX_DEFAULT_CONF.tmp
+
+	OLD_WORKER_PROCESSES=`cat $NGINX_DEFAULT_CONF | grep "\<worker_processes\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_WORKER_CONNECTIONS=`cat $NGINX_DEFAULT_CONF | grep "\<worker_connections\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_MULTI_ACCEPT=`cat $NGINX_DEFAULT_CONF | grep "\<multi_accept\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+
+	OLD_SENDFILE=`cat $NGINX_DEFAULT_CONF | grep "\<sendfile\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_TCP_NOPUSH=`cat $NGINX_DEFAULT_CONF | grep "\<tcp_nopush\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_TCP_NODELAY=`cat $NGINX_DEFAULT_CONF | grep "\<tcp_nodelay\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_KEEPALIVE_TIMEOUT=`cat $NGINX_DEFAULT_CONF | grep "\<keepalive_timeout\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_TYPES_HASH_MAX_SIZE=`cat $NGINX_DEFAULT_CONF | grep "\<types_hash_max_size\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_SERVER_TOKENS=`cat $NGINX_DEFAULT_CONF | grep "\<server_tokens\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_SERVER_NAMES_HASH_BUCKET_SIZE=`cat $NGINX_DEFAULT_CONF | grep "\<server_names_hash_bucket_size\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_SERVER_NAME_IN_REDIRECT=`cat $NGINX_DEFAULT_CONF | grep "\<server_name_in_redirect\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+
+
+	OLD_GZIP=`cat $NGINX_DEFAULT_CONF | grep "\<gzip\>" | sed 's/^gzip//g' | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_GZIP_DISABLE=`cat $NGINX_DEFAULT_CONF | grep "\<gzip_disable\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_GZIP_VARY=`cat $NGINX_DEFAULT_CONF | grep "\<gzip_vary\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_GZIP_PROXIED=`cat $NGINX_DEFAULT_CONF | grep "\<gzip_proxied\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_GZIP_COMP_LEVEL=`cat $NGINX_DEFAULT_CONF | grep "\<gzip_comp_level\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_GZIP_BUFFERS=`cat $NGINX_DEFAULT_CONF | grep "\<gzip_buffers\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_GZIP_HTTP_VERSION=`cat $NGINX_DEFAULT_CONF | grep "\<gzip_http_version\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+	OLD_GZIP_TYPES=`cat $NGINX_DEFAULT_CONF | grep "\<gzip_types\>" | sed -e 's/^[ \t]*//' -e 's/\n//g'`
+
+	if [ ! -z "$OLD_WORKER_PROCESSES" ]
+		then
+			[[ ! -z "$WORKER_PROCESSES" ]] && sed -i 's/'"$OLD_WORKER_PROCESSES"'/worker_processes '"$WORKER_PROCESSES"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/user.*;/a	worker_processes '"$WORKER_PROCESSES"';' $NGINX_DEFAULT_CONF
+	fi
+	if [ ! -z "$OLD_WORKER_CONNECTIONS" ]
+		then
+			[[ ! -z "$WORKER_CONNECTIONS" ]] && sed -i 's/'"$OLD_WORKER_CONNECTIONS"'/worker_connections '"$WORKER_CONNECTIONS"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/events.*{/a	worker_connections '"$WORKER_CONNECTIONS"';' $NGINX_DEFAULT_CONF
+	fi
+
+	if [ ! -z "$OLD_MULTI_ACCEPT" ]
+		then
+			[[ ! -z "$MULTI_ACCEPT" ]] && sed -i 's/'"$OLD_MULTI_ACCEPT"'/multi_accept '"$MULTI_ACCEPT"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/events.*{/a	multi_accept '"$MULTI_ACCEPT"';' $NGINX_DEFAULT_CONF
+
+	fi
+
+
+	if [ ! -z "$OLD_SENDFILE" ]
+		then
+			[[ ! -z "$SENDFILE" ]] && sed -i 's/'"$OLD_SENDFILE"'/sendfile '"$SENDFILE"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a	sendfile '"$SENDFILE"';' $NGINX_DEFAULT_CONF
+	fi
+
+
+	if [ ! -z "$OLD_TCP_NOPUSH" ]
+		then
+			[[ ! -z "$TCP_NOPUSH" ]] && sed -i 's/'"$OLD_TCP_NOPUSH"'/tcp_nopush '"$TCP_NOPUSH"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a	tcp_nopush '"$TCP_NOPUSH"';' $NGINX_DEFAULT_CONF
+	fi
+
+
+	if [ ! -z "$OLD_TCP_NODELAY" ]
+		then
+			[[ ! -z "$TCP_NODELAY" ]] && sed -i 's/'"$OLD_TCP_NODELAY"'/tcp_nodelay '"$TCP_NODELAY"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a	tcp_nodelay '"$TCP_NODELAY"';' $NGINX_DEFAULT_CONF
+	fi
+
+
+	if [ ! -z "$OLD_KEEPALIVE_TIMEOUT" ]
+		then
+			[[ ! -z "$KEEPALIVE_TIMEOUT" ]] && sed -i 's/'"$OLD_KEEPALIVE_TIMEOUT"'/keepalive_timeout '"$KEEPALIVE_TIMEOUT"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a	keepalive_timeout '"$KEEPALIVE_TIMEOUT"';' $NGINX_DEFAULT_CONF
+	fi
+
+
+	if [ ! -z "$OLD_TYPES_HASH_MAX_SIZE" ]
+		then
+			[[ ! -z "$TYPES_HASH_MAX_SIZE" ]] && sed -i 's/'"$OLD_TYPES_HASH_MAX_SIZE"'/types_hash_max_size '"$TYPES_HASH_MAX_SIZE"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a	types_hash_max_size '"$TYPES_HASH_MAX_SIZE"';' $NGINX_DEFAULT_CONF
+	fi
+
+
+	if [ ! -z "$OLD_SERVER_TOKENS" ]
+		then
+			[[ ! -z "$SERVER_TOKENS" ]] && sed -i 's/'"$OLD_SERVER_TOKENS"'/server_tokens '"$SERVER_TOKENS"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a	server_tokens '"$SERVER_TOKENS"';' $NGINX_DEFAULT_CONF
+	fi
+
+
+	if [ ! -z "$OLD_SERVER_NAMES_HASH_BUCKET_SIZE" ]
+		then
+			[[ ! -z "$SERVER_NAMES_HASH_BUCKET_SIZE" ]] && sed -i 's/'"$OLD_SERVER_NAMES_HASH_BUCKET_SIZE"'/	server_names_hash_bucket_size '"$SERVER_NAMES_HASH_BUCKET_SIZE"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a	server_names_hash_bucket_size '"$SERVER_NAMES_HASH_BUCKET_SIZE"';' $NGINX_DEFAULT_CONF
+	fi
+
+
+	if [ ! -z "$OLD_SERVER_NAME_IN_REDIRECT" ]
+		then
+			[[ ! -z "$SERVER_NAME_IN_REDIRECT" ]] && sed -i 's/'"$OLD_SERVER_NAME_IN_REDIRECT"'/	server_name_in_redirect '"$SERVER_NAME_IN_REDIRECT"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a 	server_name_in_redirect '"$SERVER_NAME_IN_REDIRECT"';' $NGINX_DEFAULT_CONF
+	fi
+
+	if [ ! -z "$OLD_GZIP" ]
+		then
+			[[ ! -z "$GZIP" ]] && sed -i 's/'"$OLD_GZIP"'/gzip '"$GZIP"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a	gzip '"$GZIP"';' $NGINX_DEFAULT_CONF
+	fi
+
+
+	if [ ! -z "$OLD_GZIP_DISABLE" ]
+		then
+			[[ ! -z "$GZIP_DISABLE" ]] && sed -i 's/'"$OLD_GZIP_DISABLE"'/gzip_disable \"'"$GZIP_DISABLE"'\";/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a	gzip_disable \"'"$GZIP_DISABLE"'\";' $NGINX_DEFAULT_CONF
+	fi
+
+
+	if [ ! -z "$OLD_GZIP_VARY" ]
+		then
+			[[ ! -z "$WORKER_PROCESSES" ]] && sed -i 's/'"$OLD_GZIP_VARY"'/gzip_vary '"$GZIP_VARY"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a	gzip_vary '"$GZIP_VARY"';' $NGINX_DEFAULT_CONF
+	fi
+
+
+	if [ ! -z "$OLD_GZIP_PROXIED" ]
+		then
+			[[ ! -z "$GZIP_PROXIED" ]] && sed -i 's/'"$OLD_GZIP_PROXIED"'/gzip_proxied '"$GZIP_PROXIED"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a	gzip_proxied '"$GZIP_PROXIED"';' $NGINX_DEFAULT_CONF
+	fi
+
+
+	if [ ! -z "$OLD_GZIP_COMP_LEVEL" ]
+		then
+			[[ ! -z "$GZIP_COMP_LEVEL" ]] && sed -i 's/'"$OLD_GZIP_COMP_LEVEL"'/gzip_comp_level '"$GZIP_COMP_LEVEL"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a	gzip_comp_level '"$GZIP_COMP_LEVEL"';' $NGINX_DEFAULT_CONF
+	fi
+
+
+	if [ ! -z "$OLD_GZIP_BUFFERS" ]
+		then
+			[[ ! -z "$GZIP_BUFFERS" ]] && sed -i 's/'"$OLD_GZIP_BUFFERS"'/gzip_buffers '"$GZIP_BUFFERS"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a gzip_buffers '"$GZIP_BUFFERS"';' $NGINX_DEFAULT_CONF
+	fi
+
+
+	if [ ! -z "$OLD_GZIP_HTTP_VERSION" ]
+		then
+			[[ ! -z "$GZIP_HTTP_VERSION" ]] && sed -i 's/'"$OLD_GZIP_HTTP_VERSION"'/gzip_http_version '"$GZIP_HTTP_VERSION"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a gzip_http_version '"$GZIP_HTTP_VERSION"';' $NGINX_DEFAULT_CONF
+	fi
+
+
+	if [ ! -z "$OLD_GZIP_TYPES" ]
+		then
+			[[ ! -z "$GZIP_TYPES" ]] && sed -i 's/'"$OLD_GZIP_TYPES"'/gzip_types '"$GZIP_TYPES"';/g' $NGINX_DEFAULT_CONF
+		else
+			 sed -i '/html.*{/a gzip_types '"$GZIP_TYPES"';' $NGINX_DEFAULT_CONF
+	fi
+
+	$NGINX_BIN -t > /dev/null
+	RETVAL=$?
+	if [ "$RETVAL" != "0" ]
+		then
+			MESSAGE=`$NGINX_BIN -t`
+			rm -rf $NGINX_DEFAULT_CONF >/dev/null
+			mv $NGINX_DEFAULT_CONF.tmp $NGINX_DEFAULT_CONF
+			$KWNG_LOG --error --code=7103 --message="Config test failed. Detail: $MESSAGE"
+			echo "Error7103: Config test failed. Detail: $MESSAGE"
+			exit 7103
+	fi
+	rm -rf $NGINX_DEFAULT_CONF.tmp >/dev/null
+
+}
+function save_settings() {
+	[[ "$HTTPD_SERVER" = "apache" ]] && apache_save_settings
+	[[ "$HTTPD_SERVER" = "nginx" ]] && nginx_save_settings
+
+	$SERVICESMNG --reload --service=web
+	$KWNG_LOG --success --code=7107 --message="Web server settings saved"
+}
+
+check_command
+check_root
+
+PROCESS="$1"
+
+PROC_MESSAGE=`echo "Process:$0 $@" | sed 's|["'\'']||g'`
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+case $PROCESS in
+	--init)
+		shift
+		webserver_init
+		;;
+	--init-vhosts)
+		shift
+		name_vhosts_reload
+		;;
+	--list-modules)
+		shift
+		main_case "$@"
+		show_modules
+		;;
+	--load-modules)
+		shift
+		load_modules "$@"
+		;;
+	--list-mimetypes)
+		mime_type_show
+		;;
+	--add-mimetype)
+		shift
+		main_case "$@"
+		mime_type_add_check_flag
+		mime_type_add
+		;;
+	--remove-mimetype)
+		shift
+		main_case "$@"
+		mime_type_remove_check_flag
+		mime_type_remove
+		;;
+	--server-setting)
+		show_settings
+		;;
+	--save-setting)
+		shift
+		main_case "$@"
+		save_settings
+		;;
+esac

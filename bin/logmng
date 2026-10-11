@@ -1,0 +1,203 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+
+exec 2>/dev/null
+
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+	
+	if [ -x "$KWNG_ENV" ]
+		then
+			IFS='
+			'
+			export `$KWNG_ENV --debug | grep -v "^#"`
+			IFS=' '
+		else
+			$KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+			exit 1000
+	fi
+
+	if [ ! -f "$PANEL_CONFIG" ]
+		then
+			$KWNG_LOG --error --code=1002 --message="Fpanel config doesn't exists."
+			exit 1002
+	fi
+	CLEAN_ERROR_LOG="$PANEL_CORE_DIR/bin/clean-err-logs"
+
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]
+		then
+			$KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+			exit 1001
+	fi
+
+}
+
+function log_init() {
+	if [ "$CLEAN_ERROR" = "on" ]
+		then
+			vhosts_error_log_clear_enable
+		else
+			vhosts_error_log_clear_disable
+	fi
+	vhosts_log_rotate
+}
+function vhosts_error_log_clear_disable() {
+
+	sed -i 's#.*'"$PANEL_CORE_DIR"'/bin/logmng --clean-err##g' $CRONTAB_FILE
+	$KWNG_LOG --success --code=3801 --message="Error log clean cron disabled"
+
+}
+function vhosts_error_log_clear_enable() {
+
+	STATUS=`cat $CRONTAB_FILE | grep "$CLEAN_ERROR_LOG"` 
+	if [ "X$STATUS" = "X" ]
+		then
+			echo "1 2    * * *   root    $PANEL_CORE_DIR/bin/logmng --clean-err" >> $CRONTAB_FILE
+	fi
+	
+	$KWNG_LOG --success --code=3802 --message="Error log clean cron enabled"
+
+}
+function vhosts_log_rotate() {
+
+	echo "# FPanel - Dont edit this file." > $LOG_ROTATE_VHOST
+
+	if [ "X$DAY" = "X" ]
+		then
+			echo "
+create
+daily
+rotate 30
+" >> $LOG_ROTATE_VHOST
+		else
+			echo "
+create
+daily
+rotate $DAY
+" >> $LOG_ROTATE_VHOST
+	fi
+	
+	if [ "$COMPRESS" = "on" ]
+		then 
+			echo "compress" >> $LOG_ROTATE_VHOST
+	fi
+
+	echo "
+$DOMAIN_LOGS_DIR/*/web/*log {
+	missingok
+	notifempty
+	create 640 root adm
+	sharedscripts
+	postrotate
+		$APACHE_INIT reload >/dev/null
+	endscript
+}"  >> $LOG_ROTATE_VHOST
+
+	STATUS=`cat $CRONTAB_FILE | grep "logrotate"`
+	if [ "X$STATUS" = "X" ]
+		then
+			echo "1 4    * * *   root    logrotate $LOG_ROTATE_CONF" >> $CRONTAB_FILE
+	fi
+	$KWNG_LOG --success --code=3803 --message="Vhost Rotated"
+	exit 0
+}
+
+function main_case() {
+	while [ "$1" != "" ]
+	do
+		case $1 in
+			--clean-err=*)
+				CLEAN_ERROR=`echo $1 | sed -e 's/--clean-err=//g'`
+				;;
+			--comp=*)
+				COMPRESS=`echo $1 | sed -e 's/--comp=//g'`
+				;;
+			--day=*) 
+				DAY=`echo $1 | sed -e 's/--day=//g'`
+				;;
+			--domain=*)
+				DOMAINNAME=`echo "$1"| sed 's/--domain=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+		esac
+		shift
+	done
+}
+
+function show_check_flag() {
+	if [ -z "$DOMAINNAME" ]
+		then
+			$KWNG_LOG --error --code=3801 --message="Missing arguments"
+			usage
+			exit 3801
+	fi
+}
+function show_domain() {
+	LOGFILE="$DOMAIN_LOGS_DIR/$DOMAINNAME/web/error_log"
+				echo "$LOGFILE"
+
+	if [ ! -f $LOGFILE ]
+		then
+		$KWNG_LOG --error --code=3802 --message="$DOMAINNAME Log file doesn't exist"
+		exit 3802
+	fi
+	cat $LOGFILE | tail -20
+}
+function show_panel() {
+	
+	if [ ! -d $PANEL_LOG_DIR ]
+		then
+			$KWNG_LOG --error --code=3803 --message="Log directory doesn't exist"
+			exit 3803
+	fi
+
+	# HOSTNAME=`tail -1 $PANEL_LOG | awk -F' ' '{print $4}'`
+	# cat $PANEL_LOG | tail -27 | awk -F$HOSTNAME' ' '{print $2}' | grep .
+	tail -25 $PANEL_LOG_DIR/error.log
+	tail -25 $PANEL_LOG_DIR/info.log
+}
+function clear_error_logs() {
+	for err_file in $DOMAIN_LOGS_DIR/*/web/error*
+	do
+		if [ -f $err_file ]
+			then
+				echo > $err_file
+		fi
+	done
+}
+
+#########################
+##### Main Function #####
+#########################
+check_command
+check_root
+
+PROC_MESSAGE=`echo "Process:$0 $@" | sed 's|["'\'']||g'`
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+
+case $1 in
+	--init)
+		shift
+		main_case $@
+		log_init
+		;;
+	--show)
+		shift
+		main_case $@
+		show_check_flag
+		show_domain
+		;;
+	--show-panel)
+		shift
+		main_case $@
+		show_panel
+		;;
+	--clean-err)
+		shift
+		clear_error_logs
+		;;
+esac

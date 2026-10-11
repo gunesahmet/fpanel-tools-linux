@@ -1,0 +1,1286 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+
+exec 2>/dev/null
+
+function check_command() {
+
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+	
+	if [ -x "$KWNG_ENV" ]
+		then
+			IFS='
+			'
+			export `$KWNG_ENV --debug | grep -v "^#"`
+			IFS=' '
+		else
+			$KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+			exit 1000
+	fi
+	
+	
+	HTTPDOC_DIR="$APPS_DIR/httpdoc"
+	DB_DIR="$APPS_DIR/databases"
+	SERVER="localhost"
+	
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]
+		then
+			$KWNG_LOG --error --code=1001 --message="Err1001 - Tool is running without root privileges"
+			exit 1001
+	fi
+
+}
+
+function drop_all_tables() {
+
+	ARRAY=(`mysql -u $DBUSERNAME -p$DBPASSWORD $DBNAME -e 'SHOW TABLES' | grep -v '^Tables_in' | tr ' ' ','`)
+	ARRAY=`echo ${ARRAY[*]} | tr ' ' ','`
+	
+	mysql -u $DBUSERNAME -p$DBPASSWORD $DBNAME -e "DROP TABLE ${ARRAY};"
+}
+
+function joomla15_check() { 
+	echo "check ediliyor" >> /dev/null
+}
+function joomla15_install() {
+	if [ ! -z $DIRECTORY ]
+		then
+			mkdir -p $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+			DIRECTORY="/$DIRECTORY"
+		else
+			DIRECTORY=""
+	fi
+			
+	if [ -z $SUBDOMAIN ]
+		then
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/httpdoc"$DIRECTORY
+			JOOMLALOGDIR="$VHOSTS_DIR/$DOMAINNAME/httpdoc"$DIRECTORY
+			JOOMLATMPDIR="$VHOSTS_DIR/$DOMAINNAME/httpdoc"$DIRECTORY
+		else
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc"$DIRECTORY
+			JOOMLALOGDIR="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc"$DIRECTORY
+			JOOMLATMPDIR="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc"$DIRECTORY
+	fi
+	
+		CONFIGURATIONFILE="$CONFIGURATIONFILE/configuration.php"
+		JOOMLALOGDIR="$JOOMLALOGDIR/logs"
+		JOOMLATMPDIR="$JOOMLATMPDIR/tmp"
+	
+	# Temizlik yapılıyor..
+	if [ -z $SUBDOMAIN ]
+		then
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+		else
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+	fi
+
+	
+	if [ -z $SUBDOMAIN ]
+		then
+			cd $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/ && tar -zxf $HTTPDOC_DIR/joomla15.tgz
+		else
+			cd $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/ && tar -zxf $HTTPDOC_DIR/joomla15.tgz
+	fi
+	drop_all_tables
+
+	cd $MYSQL_DIR/$DBNAME/ && \
+		tar -zxf $DB_DIR/joomla15.tgz && \
+			sed -i 's/domain.com/'"$DOMAINNAME"'/g' $MYSQL_DIR/$DBNAME/joomla15.sql && \
+			sed -i 's/Welcome to the Frontpage/'"$SITENAME"'/g' $MYSQL_DIR/$DBNAME/joomla15.sql && \
+			mysql -u $DBUSERNAME -p$DBPASSWORD $DBNAME < $MYSQL_DIR/$DBNAME/joomla15.sql && \
+				rm -rf joomla15.sql	
+echo "<?php 
+class JConfig {
+/* Site Settings */
+var \$offline = '0';
+var \$offline_message = 'Site şu anda güncellenmektedir.<br />Lütfen daha sonra tekrar deneyiniz!';
+var \$sitename = '$SITENAME';
+var \$editor = 'tinymce';
+var \$list_limit = '20';
+var \$legacy = '0';
+/* Debug Settings */
+var \$debug = '0';
+var \$debug_lang = '0';
+/* Database Settings */
+var \$dbtype = 'mysql';
+var \$host = 'localhost';
+var \$user = '$DBUSERNAME';
+var \$password = '$DBPASSWORD';
+var \$db = '$DBNAME';
+var \$dbprefix = 'jos_';
+/* Server Settings */
+var \$live_site = '';
+var \$secret = 'F36sqXUXq5eSGPJa';
+var \$gzip = '0';
+var \$error_reporting = '-1';
+var \$helpurl = 'http://help.joomla.org';
+var \$xmlrpc_server = '0';
+var \$ftp_host = '127.0.0.1';
+var \$ftp_port = '21';
+var \$ftp_user = '$FTPUSER';
+var \$ftp_pass = '$FTPPASSWD';
+var \$ftp_root = '/httpdoc$DIRECTORY';
+var \$ftp_enable = '1';
+var \$force_ssl = '0';
+/* Locale Settings */
+var \$offset = '0';
+var \$offset_user = '0';
+/* Mail Settings */
+var \$mailer = 'mail';
+var \$mailfrom = '$MAILADDRESS';
+var \$fromname = '$SITENAME';
+var \$sendmail = '/usr/sbin/sendmail';
+var \$smtpauth = '0';
+var \$smtpsecure = 'none';
+var \$smtpport = '25';
+var \$smtpuser = '';
+var \$smtppass = '';
+var \$smtphost = 'localhost';
+/* Cache Settings */
+var \$caching = '0';
+var \$cachetime = '15';
+var \$cache_handler = 'file';
+/* Meta Settings */
+var \$MetaDesc = 'Joomla - devingen portal motoru ve içerik yönetim sistemi';
+var \$MetaKeys = 'Joomla, joomla, Joomla! Türkiye';
+var \$MetaTitle = '1';
+var \$MetaAuthor = '1';
+/* SEO Settings */
+var \$sef           = '0';
+var \$sef_rewrite   = '0';
+var \$sef_suffix    = '0';
+/* Feed Settings */
+var \$feed_limit   = 10;
+var \$feed_email   = 'author';
+var \$log_path = '$JOOMLALOGDIR';
+var \$tmp_path = '$JOOMLATMPDIR';
+/* Session Setting */
+var \$lifetime = '15';
+var \$session_handler = 'database';
+}
+?>" > $CONFIGURATIONFILE
+	if [ -z $SUBDOMAIN ]
+		then
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/installation
+		else
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/installation
+	fi
+
+	# chown -R mysql:mysql $MYSQL_DIR/$DBNAME/*
+	# mysql -u $DBUSERNAME -p$DBPASSWORD -e "FLUSH PRIVILEGES;" $DBNAME --host=$SERVER
+	if [ -z $SUBDOMAIN ]
+		then
+			$KWNG_LOG --success --code=3601 --message="Joomla 1.5 installed on $DOMAINNAME"
+			exit 0
+		else
+			$KWNG_LOG --success --code=3601 --message="Joomla 1.5 installed on $SUBDOMAIN.$DOMAINNAME"
+			exit 0
+	fi
+
+}
+
+function wordpress_check() {
+	echo "check ediliyor" >> /dev/null
+}
+function wordpress_install() {
+	if [ ! -z $DIRECTORY ]
+		then
+			mkdir -p $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+			DIRECTORY="/$DIRECTORY"
+		else
+			DIRECTORY=""
+	fi
+	
+	if [ -z $SUBDOMAIN ]
+		then
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/wp-config.php"
+		else
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/wp-config.php"
+	fi
+	# Temizlik yapılıyor..
+	if [ -z $SUBDOMAIN ]
+		then
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+		else
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+	fi
+	
+
+
+	if [ -z $SUBDOMAIN ]
+		then
+			cd $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/ && \
+			tar -zxf $HTTPDOC_DIR/wordpress.tgz
+		else
+			cd $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/ && \
+			tar -zxf $HTTPDOC_DIR/wordpress.tgz
+	fi
+
+	drop_all_tables
+
+	if [ -z $SUBDOMAIN ]
+		then
+			cd $MYSQL_DIR/$DBNAME/ && \
+				tar -zxf $DB_DIR/wordpress.tgz && \
+					sed -i 's/domain.com/'"$DOMAINNAME"'/g' $MYSQL_DIR/$DBNAME/wordpress.sql && \
+						mysql -u $DBUSERNAME -p$DBPASSWORD $DBNAME < $MYSQL_DIR/$DBNAME/wordpress.sql && \
+							rm -rf wordpress.sql
+		else
+			cd $MYSQL_DIR/$DBNAME/ && \
+				tar -zxf $DB_DIR/wordpress.tgz && \
+					sed -i 's/www.domain.com/'"$SUBDOMAIN.$DOMAINNAME"'/g' $MYSQL_DIR/$DBNAME/wordpress.sql && \
+						mysql -u $DBUSERNAME -p$DBPASSWORD $DBNAME < $MYSQL_DIR/$DBNAME/wordpress.sql && \
+							rm -rf wordpress.sql
+	fi
+echo "<?php
+define('DB_NAME', '$DBNAME');
+define('DB_USER', '$DBUSERNAME');
+define('DB_PASSWORD', '$DBPASSWORD');
+define('DB_HOST', 'localhost');
+define('DB_CHARSET', 'utf8');
+define('DB_COLLATE', '');
+" > $CONFIGURATIONFILE
+
+	wget -q -O - http://api.wordpress.org/secret-key/1.1/ >> $CONFIGURATIONFILE
+
+echo "
+\$table_prefix  = 'wp_';
+define('WPLANG', '');
+define('WP_DEBUG', false);
+if ( !defined('ABSPATH') )
+	define('ABSPATH', dirname(__FILE__) . '/');
+require_once(ABSPATH . 'wp-settings.php');" >> $CONFIGURATIONFILE
+
+	if [ -z $SUBDOMAIN ]
+		then
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+		else
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY
+	fi
+	
+
+
+	chown -R mysql:mysql $MYSQL_DIR/$DBNAME/*
+	mysql -u $DBUSERNAME -p$DBPASSWORD -e "FLUSH PRIVILEGES;" $DBNAME --host=$SERVER
+	if [ -z $SUBDOMAIN ]
+		then
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE wp_options SET option_value='http://$DOMAINNAME' WHERE option_value='http://domain.com';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE wp_options SET option_value='admin@$DOMAINNAME' WHERE option_value='admin@domain.com'; flush privileges" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE wp_options SET option_value='$SITENAME' WHERE option_value='Application'; flush privileges" $DBNAME --host=$SERVER
+		else
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE wp_options SET option_value='http://$SUBDOMAIN.$DOMAINNAME' WHERE option_value='http://domain.com';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE wp_options SET option_value='admin@$DOMAINNAME' WHERE option_value='admin@domain.com'; flush privileges" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE wp_options SET option_value='$SITENAME' WHERE option_value='Application'; flush privileges" $DBNAME --host=$SERVER
+	fi
+	mysql -u $DBUSERNAME -p$DBPASSWORD -e "FLUSH PRIVILEGES;" $DBNAME --host=$SERVER
+	if [ -z $SUBDOMAIN ]
+		then
+			$KWNG_LOG --success --code=3602 --message="Wordpress installed on $DOMAINNAME"
+			
+		else
+			$KWNG_LOG --success --code=3602 --message="Wordpress installed on $SUBDOMAIN.$DOMAINNAME"
+	fi
+}
+
+function joomla17_check() {
+	echo "check ediliyor" >> /dev/null
+}
+function joomla17_install() {
+	if [ ! -z $DIRECTORY ]
+		then
+			mkdir -p $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+			DIRECTORY="/$DIRECTORY"
+		else
+			DIRECTORY=""
+	fi
+	if [ -z $SUBDOMAIN ]
+		then
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/configuration.php"
+			JOOMLALOGDIR="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/logs"
+			JOOMLATMPDIR="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/tmp"
+		else
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/configuration.php"
+			JOOMLALOGDIR="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/logs"
+			JOOMLATMPDIR="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/tmp"
+	fi
+	
+	# Temizlik yapılıyor..
+	if [ -z $SUBDOMAIN ]
+		then
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+		else
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+	fi
+	
+
+	
+	if [ -z $SUBDOMAIN ]
+		then
+			cd $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY && \
+				tar -zxf $HTTPDOC_DIR/joomla17.tgz
+		else
+			cd $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/ && \
+			tar -zxf $HTTPDOC_DIR/joomla17.tgz
+	fi
+	
+	drop_all_tables
+	cd $MYSQL_DIR/$DBNAME/ && \
+		tar -zxf $DB_DIR/joomla17.tgz && \
+			sed -i 's/domain.com/'"$DOMAINNAME"'/g' $MYSQL_DIR/$DBNAME/joomla17.sql && \
+			mysql -u $DBUSERNAME -p$DBPASSWORD $DBNAME < $MYSQL_DIR/$DBNAME/joomla17.sql && \
+				rm -rf joomla17.sql
+
+echo "<?php
+class JConfig {
+	public \$offline = '0';
+	public \$offline_message = 'Bu site bakÄ±m iÃ§in kapalÄ±dÄ±r.<br /> LÃ¼tfen yakÄ±nda tekrar kontrol edin.';
+	public \$sitename = '$SITENAME';
+	public \$editor = 'tinymce';
+	public \$list_limit = '20';
+	public \$access = '1';
+	public \$debug = '0';
+	public \$debug_lang = '0';
+	public \$dbtype = 'mysql';
+	public \$host = 'localhost';
+	public \$user = '$DBUSERNAME';
+	public \$password = '$DBPASSWORD';
+	public \$db = '$DBNAME';
+	public \$dbprefix = 'jos_';
+	public \$live_site = '';
+	public \$secret = 'ykvukGWh4kvP83Ah';
+	public \$gzip = '0';
+	public \$error_reporting = '-1';
+	public \$helpurl = 'http://help.joomla.org/proxy/index.php?option=com_help&amp;keyref=Help{major}{minor}:{keyref}';
+	public \$ftp_host = '127.0.0.1';
+	public \$ftp_port = '21';
+	public \$ftp_user = '$FTPUSER';
+	public \$ftp_pass = '$FTPPASSWD';
+	public \$ftp_root = '/httpdoc$DIRECTORY';
+	public \$ftp_enable = '1';
+	public \$offset = 'UTC';
+	public \$offset_user = 'UTC';
+	public \$mailer = 'mail';
+	public \$mailfrom = '$MAILADDRESS';
+	public \$fromname = '$SITENAME';
+	public \$sendmail = '/usr/sbin/sendmail';
+	public \$smtpauth = '0';
+	public \$smtpuser = '';
+	public \$smtppass = '';
+	public \$smtphost = 'localhost';
+	public \$smtpsecure = 'none';
+	public \$smtpport = '25';
+	public \$caching = '0';
+	public \$cache_handler = 'file';
+	public \$cachetime = '15';
+	public \$MetaDesc = '';
+	public \$MetaKeys = '';
+	public \$MetaAuthor = '1';
+	public \$sef = '1';
+	public \$sef_rewrite = '0';
+	public \$sef_suffix = '0';
+	public \$unicodeslugs = '0';
+	public \$feed_limit = '10';
+	public \$log_path = '$JOOMLALOGDIR';
+	public \$tmp_path = '$JOOMLATMPDIR';
+	public \$lifetime = '15';
+	public \$session_handler = 'database';
+}" > $CONFIGURATIONFILE
+
+	if [ -z $SUBDOMAIN ]
+		then
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/installation
+		else
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/installation
+	fi
+
+	chown -R mysql:mysql $MYSQL_DIR/$DBNAME/*
+	mysql -u $DBUSERNAME -p$DBPASSWORD -e "FLUSH PRIVILEGES;" $DBNAME --host=$SERVER
+	mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE jos_menu SET title='$SITENAME' WHERE title='Home'; flush privileges" $DBNAME --host=$SERVER
+
+	
+		if [ -z $SUBDOMAIN ]
+		then
+			$KWNG_LOG --success --code=3603 --message="Joomla 1.7 installed on $DOMAINNAME"
+		else
+			$KWNG_LOG --success --code=3603 --message="Joomla 1.7 installed on $SUBDOMAIN.$DOMAINNAME"
+	fi
+}
+
+function joomla25_check() {
+	echo "check ediliyor" >> /dev/null
+}
+function joomla25_install() {
+	if [ ! -z $DIRECTORY ]
+		then
+			mkdir -p $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+			DIRECTORY="/$DIRECTORY"
+		else
+			DIRECTORY=""
+	fi
+	if [ -z $SUBDOMAIN ]
+		then
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/configuration.php"
+			JOOMLALOGDIR="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/logs"
+			JOOMLATMPDIR="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/tmp"
+		else
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/configuration.php"
+			JOOMLALOGDIR="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/logs"
+			JOOMLATMPDIR="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/tmp"
+	fi
+	# Temizlik yapılıyor..
+	if [ -z $SUBDOMAIN ]
+		then
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+		else
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+	fi
+	
+
+	if [ -z $SUBDOMAIN ]
+		then
+			cd $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY && \
+				tar -zxf $HTTPDOC_DIR/joomla25.tgz
+		else
+			cd $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/ && \
+			tar -zxf $HTTPDOC_DIR/joomla25.tgz
+	fi
+
+	drop_all_tables
+	
+	cd $MYSQL_DIR/$DBNAME/ && \
+		tar -zxf $DB_DIR/joomla25.tgz && \
+			sed -i 's/domain.com/'"$DOMAINNAME"'/g' $MYSQL_DIR/$DBNAME/joomla25.sql && \
+			mysql -u $DBUSERNAME -p$DBPASSWORD $DBNAME < $MYSQL_DIR/$DBNAME/joomla25.sql && \
+				rm -rf joomla25.sql
+		
+echo "<?php
+class JConfig {
+	public \$offline = '0';
+	public \$offline_message = 'Bu site bakÄ±m iÃ§in kapalÄ±dÄ±r.<br /> LÃ¼tfen yakÄ±nda tekrar kontrol edin.';
+	public \$sitename = '$SITENAME';
+	public \$editor = 'tinymce';
+	public \$list_limit = '20';
+	public \$access = '1';
+	public \$debug = '0';
+	public \$debug_lang = '0';
+	public \$dbtype = 'mysql';
+	public \$host = 'localhost';
+	public \$user = '$DBUSERNAME';
+	public \$password = '$DBPASSWORD';
+	public \$db = '$DBNAME';
+	public \$dbprefix = 'jos_';
+	public \$live_site = '';
+	public \$secret = 'ykvukGWh4kvP83Ah';
+	public \$gzip = '0';
+	public \$error_reporting = '-1';
+	public \$helpurl = 'http://help.joomla.org/proxy/index.php?option=com_help&amp;keyref=Help{major}{minor}:{keyref}';
+	public \$ftp_host = '127.0.0.1';
+	public \$ftp_port = '21';
+	public \$ftp_user = '$FTPUSER';
+	public \$ftp_pass = '$FTPPASSWD';
+	public \$ftp_root = '/httpdoc$DIRECTORY';
+	public \$ftp_enable = '1';
+	public \$offset = 'UTC';
+	public \$offset_user = 'UTC';
+	public \$mailer = 'mail';
+	public \$mailfrom = '$MAILADDRESS';
+	public \$fromname = '$SITENAME';
+	public \$sendmail = '/usr/sbin/sendmail';
+	public \$smtpauth = '0';
+	public \$smtpuser = '';
+	public \$smtppass = '';
+	public \$smtphost = 'localhost';
+	public \$smtpsecure = 'none';
+	public \$smtpport = '25';
+	public \$caching = '0';
+	public \$cache_handler = 'file';
+	public \$cachetime = '15';
+	public \$MetaDesc = '';
+	public \$MetaKeys = '';
+	public \$MetaAuthor = '1';
+	public \$sef = '1';
+	public \$sef_rewrite = '0';
+	public \$sef_suffix = '0';
+	public \$unicodeslugs = '0';
+	public \$feed_limit = '10';
+	public \$log_path = '$JOOMLALOGDIR';
+	public \$tmp_path = '$JOOMLATMPDIR';
+	public \$lifetime = '15';
+	public \$session_handler = 'database';
+}" > $CONFIGURATIONFILE
+
+	if [ -z $SUBDOMAIN ]
+		then
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/installation
+		else
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/installation
+	fi
+	
+	chown -R mysql:mysql $MYSQL_DIR/$DBNAME/*
+	mysql -u $DBUSERNAME -p$DBPASSWORD -e "FLUSH PRIVILEGES;" $DBNAME --host=$SERVER
+	mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE jos_menu SET title='$SITENAME' WHERE title='Home'; flush privileges" $DBNAME --host=$SERVER
+	if [ -z $SUBDOMAIN ]
+		then
+			$KWNG_LOG --success --code=3604 --message="Joomla 2.5 installed on $DOMAINNAME"
+		else
+			$KWNG_LOG --success --code=3604 --message="Joomla 2.5 installed on $SUBDOMAIN.$DOMAINNAME"
+	fi
+}
+
+function joomla30_check() {
+	echo "check ediliyor" >> /dev/null
+}
+function joomla30_install() {
+	if [ ! -z $DIRECTORY ]
+		then
+			mkdir -p $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+			DIRECTORY="/$DIRECTORY"
+		else
+			DIRECTORY=""
+	fi
+	echo "Directory: " $DIRECTORY >> /tmp/wrapper.log
+	if [ -z $SUBDOMAIN ]
+		then
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/configuration.php"
+			JOOMLALOGDIR="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/logs"
+			JOOMLATMPDIR="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/tmp"
+		else
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/configuration.php"
+			JOOMLALOGDIR="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/logs"
+			JOOMLATMPDIR="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/tmp"
+	fi
+	# Temizlik yapılıyor..
+	if [ -z $SUBDOMAIN ]
+		then
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+		else
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+	fi
+	
+	if [ -z $SUBDOMAIN ]
+		then
+			cd $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY && \
+				tar -zxf $HTTPDOC_DIR/joomla30.tgz
+		else
+			cd $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/ && \
+			tar -zxf $HTTPDOC_DIR/joomla30.tgz
+	fi
+
+	drop_all_tables
+	
+	cd $MYSQL_DIR/$DBNAME/ && \
+		tar -zxf $DB_DIR/joomla30.tgz && \
+			sed -i 's/domain.com/'"$DOMAINNAME"'/g' $MYSQL_DIR/$DBNAME/joomla30.sql && \
+			mysql -u $DBUSERNAME -p$DBPASSWORD $DBNAME < $MYSQL_DIR/$DBNAME/joomla30.sql && \
+				rm -rf joomla30.sql
+		
+echo "<?php
+class JConfig {
+	public \$offline = '0';
+	public \$offline_message = 'Site bakÄ±m iÃ§in kapalÄ±dÄ±r.<br /> LÃ¼tfen daha sonra tekrar kontrol ediniz.';
+	public \$display_offline_message = '1';
+	public \$offline_image = '';
+	public \$sitename = '$SITENAME';
+	public \$editor = 'tinymce';
+	public \$captcha = '0';
+	public \$list_limit = '20';
+	public \$access = '1';
+	public \$debug = '0';
+	public \$debug_lang = '0';
+	public \$dbtype = 'mysql';
+	public \$host = 'localhost';
+	public \$user = '$DBUSERNAME';
+	public \$password = '$DBPASSWORD';
+	public \$db = '$DBNAME';
+	public \$dbprefix = 'jos_';
+	public \$live_site = '';
+	public \$secret = 'GnKg42ABB3GLD4EA';
+	public \$gzip = '0';
+	public \$error_reporting = 'default';
+	public \$helpurl = 'http://help.joomla.org/proxy/index.php?option=com_help&amp;keyref=Help{major}{minor}:{keyref}';
+	public \$ftp_host = '';
+	public \$ftp_port = '';
+	public \$ftp_user = '';
+	public \$ftp_pass = '';
+	public \$ftp_root = '';
+	public \$ftp_enable = '';
+	public \$offset = 'UTC';
+	public \$mailer = 'mail';
+	public \$mailfrom = '$MAILADDRESS';
+	public \$fromname = '$SITENAME';
+	public \$sendmail = '/usr/sbin/sendmail';
+	public \$smtpauth = '0';
+	public \$smtpuser = '';
+	public \$smtppass = '';
+	public \$smtphost = 'localhost';
+	public \$smtpsecure = 'none';
+	public \$smtpport = '25';
+	public \$caching = '0';
+	public \$cache_handler = 'file';
+	public \$cachetime = '15';
+	public \$MetaDesc = '';
+	public \$MetaKeys = '';
+	public \$MetaTitle = '1';
+	public \$MetaAuthor = '1';
+	public \$MetaVersion = '0';
+	public \$robots = '';
+	public \$sef = '1';
+	public \$sef_rewrite = '0';
+	public \$sef_suffix = '0';
+	public \$unicodeslugs = '0';
+	public \$feed_limit = '10';
+	public \$log_path = '$JOOMLALOGDIR';
+	public \$tmp_path = '$$JOOMLATMPDIR';
+	public \$lifetime = '15';
+	public \$session_handler = 'database';
+}" > $CONFIGURATIONFILE
+
+	if [ -z $SUBDOMAIN ]
+		then
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/installation
+		else
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/installation
+	fi
+	
+	chown -R mysql:mysql $MYSQL_DIR/$DBNAME/*
+	mysql -u $DBUSERNAME -p$DBPASSWORD -e "FLUSH PRIVILEGES;" $DBNAME --host=$SERVER
+	mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE jos_menu SET title='$SITENAME' WHERE title='Home'; flush privileges" $DBNAME --host=$SERVER
+	if [ -z $SUBDOMAIN ]
+		then
+			$KWNG_LOG --success --code=3605 --message="Joomla 3.0 installed on $DOMAINNAME"
+		else
+			$KWNG_LOG --success --code=3605 --message="Joomla 3.0 installed on $SUBDOMAIN.$DOMAINNAME"
+	fi
+}
+
+function drupal_check() {
+	echo "check ediliyor" >> /dev/null
+}
+function drupal_install() {
+	if [ ! -z $DIRECTORY ]
+		then
+			mkdir -p $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+			DIRECTORY="/$DIRECTORY"
+		else
+			DIRECTORY=""
+	fi
+	if [ -z $SUBDOMAIN ]
+		then
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/sites/default/settings.php"
+		else
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/sites/default/settings.php"
+	fi
+	# Temizlik yapılıyor.
+	if [ -z $SUBDOMAIN ]
+		then
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+		else
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+	fi
+	
+
+	if [ -z $SUBDOMAIN ]
+		then
+			cd $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY && \
+				tar -zxf $HTTPDOC_DIR/drupal.tgz
+		else
+			cd $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY && \
+			tar -zxf $HTTPDOC_DIR/drupal.tgz
+	fi
+	
+	if [ -z $SUBDOMAIN ]
+		then
+			mkdir -p $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/sites/default/files/styles
+		else
+			mkdir -p $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/sites/default/files/styles
+	fi
+	
+	drop_all_tables
+	
+	COUNTSITE=`echo $SITENAME | awk '{ print length($0) }'`
+	FIXSETVARIABLE="'site_name','s:$COUNTSITE:"
+	FIXVARIABLE="'site_name','s:11:"
+
+	cd $MYSQL_DIR/$DBNAME/ && \
+		tar -zxf $DB_DIR/drupal.tgz && \
+			sed -i 's/Application/'"$SITENAME"'/g' $MYSQL_DIR/$DBNAME/drupal.sql && \
+			sed -i 's/'"$FIXVARIABLE"'/'"$FIXSETVARIABLE"'/g' $MYSQL_DIR/$DBNAME/drupal.sql && \
+			sed -i 's/domain.com/'"$DOMAINNAME"'/g' $MYSQL_DIR/$DBNAME/drupal.sql && \
+			mysql -u $DBUSERNAME -p$DBPASSWORD $DBNAME < $MYSQL_DIR/$DBNAME/drupal.sql && \
+				rm -rf $MYSQL_DIR/$DBNAME/drupal.sql
+				
+		
+echo "<?php
+\$databases = array (
+  'default' => 
+  array (
+    'default' => 
+    array (
+      'database' => '$DBNAME',
+      'username' => '$DBUSERNAME',
+      'password' => '$DBPASSWORD',
+      'host' => 'localhost',
+      'port' => '',
+      'driver' => 'mysql',
+      'prefix' => 'drupal_',
+    ),
+  ),
+);
+\$update_free_access = FALSE;
+\$drupal_hash_salt = 'skhkxr36EozNjH5fYf2TUlBeIes6n1GA5oTV9gUpudg';
+ini_set('session.gc_probability', 1);
+ini_set('session.gc_divisor', 100);
+ini_set('session.gc_maxlifetime', 200000);
+ini_set('session.cookie_lifetime', 2000000);
+\$conf['404_fast_paths_exclude'] = '/\/(?:styles)\//';
+\$conf['404_fast_paths'] = '/\.(?:txt|png|gif|jpe?g|css|js|ico|swf|flv|cgi|bat|pl|dll|exe|asp)\$/i';
+\$conf['404_fast_html'] = '<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>404 Not Found</title></head><body><h1>Not Found</h1><p>The requested URL \"@path\" was not found on this server.</p></body></html>';
+" > $CONFIGURATIONFILE
+
+	if [ -z $SUBDOMAIN ]
+		then
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+		else
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY
+	fi
+
+	chown -R mysql:mysql $MYSQL_DIR/$DBNAME/*
+	mysql -u $DBUSERNAME -p$DBPASSWORD -e "FLUSH PRIVILEGES;" $DBNAME --host=$SERVER
+	if [ -z $SUBDOMAIN ]
+		then
+			$KWNG_LOG --success --code=3606 --message="Drupal installed on $DOMAINNAME"
+		else
+			$KWNG_LOG --success --code=3606 --message="Drupal installed on $SUBDOMAIN.$DOMAINNAME"
+	fi
+}
+
+function phpbb3_check() {
+	echo "check ediliyor" >> /dev/null
+}
+function phpbb3_install() {
+	if [ ! -z $DIRECTORY ]
+		then
+			mkdir -p $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+			DIRECTORY="/$DIRECTORY"
+		else
+			DIRECTORY=""
+	fi
+	if [ -z $SUBDOMAIN ]
+		then
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/httpdoc/config.php"
+		else
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc/config.php"
+	fi
+
+	# Temizlik yapılıyor.
+	if [ -z $SUBDOMAIN ]
+		then
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+		else
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+	fi
+
+	
+	if [ -z $SUBDOMAIN ]
+		then
+			cd $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY && \
+				tar -zxf $HTTPDOC_DIR/phpbb3.tgz
+		else
+			cd $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/ && \
+			tar -zxf $HTTPDOC_DIR/phpbb3.tgz
+	fi
+	drop_all_tables
+	FIXSETVARIABLE="sitename','$SITENAME"
+	FIXVARIABLE="sitename','yourdomain.com"
+	cd $MYSQL_DIR/$DBNAME/ && \
+		tar -zxf $DB_DIR/phpbb3.tgz && \
+			sed -i 's/'"$FIXVARIABLE"'/'"$FIXSETVARIABLE"'/g' $MYSQL_DIR/$DBNAME/phpbb3.sql && \
+			mysql -u $DBUSERNAME -p$DBPASSWORD $DBNAME < $MYSQL_DIR/$DBNAME/phpbb3.sql && \
+				rm -rf phpbb3.sql
+		
+echo "<?php
+\$dbms = 'mysqli';
+\$dbhost = 'localhost';
+\$dbport = '';
+\$dbname = '$DBNAME';
+\$dbuser = '$DBUSERNAME';
+\$dbpasswd = '$DBPASSWORD';
+\$table_prefix = 'phpbb_';
+\$acm_type = 'file';
+\$load_extensions = '';
+
+@define('PHPBB_INSTALLED', true);
+// @define('DEBUG', true);
+// @define('DEBUG_EXTRA', true);
+?>" > $CONFIGURATIONFILE
+
+
+	if [ -z $SUBDOMAIN ]
+		then
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/install
+		else
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/install
+	fi
+
+	chown -R mysql:mysql $MYSQL_DIR/$DBNAME/*
+	mysql -u $DBUSERNAME -p$DBPASSWORD -e "FLUSH PRIVILEGES;" $DBNAME --host=$SERVER
+	
+	if [ -z $SUBDOMAIN ]
+		then
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE phpbb_config SET config_value='.$DOMAINNAME' WHERE config_value='.domain.com';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE phpbb_config SET config_value='www.$DOMAINNAME' WHERE config_value='www.domain.com';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE phpbb_config SET config_value='www.$DOMAINNAME' WHERE config_value='www.yourdomain.com';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE phpbb_config SET config_value='$DOMAINNAME' WHERE config_value='yourdomain.com';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE phpbb_config SET config_value='admin@$DOMAINNAME' WHERE config_value='admin@domain.com'; flush privileges" $DBNAME --host=$SERVER
+		else
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE phpbb_config SET config_value='.$SUBDOMAIN.$DOMAINNAME' WHERE config_value='.domain.com';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE phpbb_config SET config_value='$SUBDOMAIN.$DOMAINNAME' WHERE config_value='www.domain.com';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE phpbb_config SET config_value='$SUBDOMAIN.$DOMAINNAME' WHERE config_value='www.yourdomain.com';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE phpbb_config SET config_value='$SUBDOMAIN.$DOMAINNAME' WHERE config_value='yourdomain.com';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE phpbb_config SET config_value='admin@$DOMAINNAME' WHERE config_value='admin@domain.com'; flush privileges" $DBNAME --host=$SERVER
+		fi
+	
+	mysql -u $DBUSERNAME -p$DBPASSWORD -e "FLUSH PRIVILEGES;" $DBNAME --host=$SERVER
+	if [ -z $SUBDOMAIN ]
+		then
+			$KWNG_LOG --success --code=3607 --message="PhpBB3 installed on $DOMAINNAME"
+		else
+			$KWNG_LOG --success --code=3607 --message="PhpBB3 installed on $SUBDOMAIN.$DOMAINNAME"
+	fi
+}
+
+function smf_check() {
+	echo "check ediliyor" >> /dev/null
+}
+function smf_install() {
+	if [ ! -z $DIRECTORY ]
+		then
+			mkdir -p $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+			DIRECTORY="/$DIRECTORY"
+		else
+			DIRECTORY=""
+	fi
+	if [ -z $SUBDOMAIN ]
+		then
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/Settings.php"
+			SMFSOURCEDIR="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/Sources"
+			SMFCACHEDIR="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/cache"
+			SMFMAINDIR="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY"
+		else
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/Settings.php"
+			SMFSOURCEDIR="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/Sources"
+			SMFCACHEDIR="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/cache"
+			SMFMAINDIR="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY"
+	fi
+	# Temizlik yapılıyor.
+	if [ -z $SUBDOMAIN ]
+		then
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+		else
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+	fi
+
+
+	if [ -z $SUBDOMAIN ]
+		then
+			cd $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY && \
+				tar -zxf $HTTPDOC_DIR/smf.tgz
+		else
+			cd $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/ && \
+			tar -zxf $HTTPDOC_DIR/smf.tgz
+	fi
+
+	drop_all_tables
+
+	cd $MYSQL_DIR/$DBNAME/ && \
+		tar -zxf $DB_DIR/smf.tgz
+		
+echo "<?php
+\$maintenance = 0;
+\$mtitle = 'Maintenance Mode';
+\$mmessage = 'Okay faithful users...we\'re attempting to restore an older backup of the database...news will be posted once we\'re back!';
+\$mbname = '$SITENAME';
+\$language = 'english';
+\$boardurl = 'http://www.$DOMAINNAME';
+\$webmaster_email = 'info@$DOMAINNAME';
+\$cookiename = 'SMFCookie104';
+\$db_type = 'mysql';
+\$db_server = 'localhost';
+\$db_name = '$DBNAME';
+\$db_user = '$DBUSERNAME';
+\$db_passwd = '$DBPASSWORD';
+\$ssi_db_user = '';
+\$ssi_db_passwd = '';
+\$db_prefix = 'smf_';
+\$db_persist = 0;
+\$db_error_send = 1;
+\$boarddir = '$SMFMAINDIR';
+\$sourcedir = '$SMFSOURCEDIR';
+\$cachedir = '$SMFCACHEDIR';
+\$db_last_error = 0;
+if (!file_exists(\$boarddir) && file_exists(dirname(__FILE__) . '/agreement.txt'))
+	\$boarddir = dirname(__FILE__);
+if (!file_exists(\$sourcedir) && file_exists(\$boarddir . '/Sources'))
+	\$sourcedir = \$boarddir . '/Sources';
+if (!file_exists(\$cachedir) && file_exists(\$boarddir . '/cache'))
+	\$cachedir = \$boarddir . '/cache';
+\$db_character_set = 'utf8';
+?>" > $CONFIGURATIONFILE
+
+	chown -R mysql:mysql $MYSQL_DIR/$DBNAME/*
+	mysql -u $DBUSERNAME -p$DBPASSWORD -e "FLUSH PRIVILEGES;" $DBNAME --host=$SERVER
+
+	if [ -z $SUBDOMAIN ]
+		then
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_settings SET value='$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/attachments' WHERE value='/var/www/deneme.com/httpdoc$DIRECTORY/attachments';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_settings SET value='$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/Smileys' WHERE value='/var/www/deneme.com/httpdoc$DIRECTORY/Smileys';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_settings SET value='$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/avatars' WHERE value='/var/www/deneme.com/httpdoc$DIRECTORY/avatars';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_settings SET value='http://$DOMAINNAME/Smileys' WHERE value='http://www.deneme.com/Smileys';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_settings SET value='http://$DOMAINNAME/avatars' WHERE value='http://www.deneme.com/avatars';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_themes SET value='$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/Themes/default' WHERE value='/var/www/deneme.com/httpdoc$DIRECTORY/Themes/default';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_themes SET value='http://www.$DOMAINNAME/Themes/default/images' WHERE value='http://www.deneme.com/Themes/default/images';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_themes SET value='http://www.$DOMAINNAME/Themes/core' WHERE value='http://www.deneme.com/Themes/core';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_themes SET value='http://www.$DOMAINNAME/Themes/core/images' WHERE value='http://www.deneme.com/Themes/core/images';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_themes SET value='$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/Themes/core' WHERE value='/var/www/deneme.com/httpdoc$DIRECTORY/Themes/core';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_themes SET value='http://www.$DOMAINNAME/Themes/default' WHERE value='http://www.deneme.com/Themes/default'; flush privileges" $DBNAME --host=$SERVER
+		else
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_settings SET value='$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/attachments' WHERE value='/var/www/deneme.com/httpdoc$DIRECTORY/attachments';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_settings SET value='$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/Smileys' WHERE value='/var/www/deneme.com/httpdoc$DIRECTORY/Smileys';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_settings SET value='$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/avatars' WHERE value='/var/www/deneme.com/httpdoc$DIRECTORY/avatars';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_settings SET value='http://$SUBDOMAIN.$DOMAINNAME/Smileys' WHERE value='http://www.deneme.com/Smileys';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_settings SET value='http://$SUBDOMAIN.$DOMAINNAME/avatars' WHERE value='http://www.deneme.com/avatars';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_themes SET value='$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/Themes/default' WHERE value='/var/www/deneme.com/httpdoc$DIRECTORY/Themes/default';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_themes SET value='http://$SUBDOMAIN.$DOMAINNAME/Themes/default/images' WHERE value='http://www.deneme.com/Themes/default/images';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_themes SET value='http://$SUBDOMAIN.$DOMAINNAME/Themes/core' WHERE value='http://www.deneme.com/Themes/core';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_themes SET value='http://$SUBDOMAIN.$DOMAINNAME/Themes/core/images' WHERE value='http://www.deneme.com/Themes/core/images';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_themes SET value='$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/Themes/core' WHERE value='/var/www/deneme.com/httpdoc$DIRECTORY/Themes/core';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE smf_themes SET value='http://$SUBDOMAIN.$DOMAINNAME/Themes/default' WHERE value='http://www.deneme.com/Themes/default'; flush privileges" $DBNAME --host=$SERVER
+	fi
+	
+	mysql -u $DBUSERNAME -p$DBPASSWORD -e "FLUSH PRIVILEGES;" $DBNAME --host=$SERVER
+
+	if [ -z $SUBDOMAIN ]
+		then
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/install.php
+		else
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/install.php
+	fi
+	if [ -z $SUBDOMAIN ]
+		then
+			$KWNG_LOG --success --code=3608 --message="SMF installed on $DOMAINNAME"
+		else
+			$KWNG_LOG --success --code=3608 --message="SMF installed on $SUBDOMAIN.$DOMAINNAME"
+	fi
+}
+
+function presta_check() {
+	echo "check ediliyor" >> /dev/null
+}
+function presta_install() {
+	if [ ! -z $DIRECTORY ]
+		then
+			mkdir -p $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+			DIRECTORY="/$DIRECTORY"
+		else
+			DIRECTORY=""
+	fi
+	if [ -z $SUBDOMAIN ]
+		then
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/config/settings.inc.php"
+		else
+			CONFIGURATIONFILE="$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/config/settings.inc.php"
+	fi
+	# Temizlik yapılıyor.
+	if [ -z $SUBDOMAIN ]
+		then
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+		else
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+	fi
+
+
+	if [ -z $SUBDOMAIN ]
+		then
+			cd $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY && \
+				tar -zxf $HTTPDOC_DIR/presta.tgz
+		else
+			cd $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/ && \
+			tar -zxf $HTTPDOC_DIR/presta.tgz
+	fi
+	
+CURRENT_DATE=`date +%Y-%m-%d`
+CURRENT_TIME=`date +%Y-%m-%d" "%H:%M:%S`
+
+	drop_all_tables
+
+	cd $MYSQL_DIR/$DBNAME/ && \
+		tar -zxf $DB_DIR/presta.tgz && \
+			mysql -u $DBUSERNAME -p$DBPASSWORD $DBNAME < $MYSQL_DIR/$DBNAME/presta.sql && \
+				rm -rf presta.sql
+		
+echo "<?php
+define('_DB_SERVER_', 'localhost');
+define('_DB_TYPE_', 'MySQL');
+define('_DB_NAME_', '$DBNAME');
+define('_DB_USER_', '$DBUSERNAME');
+define('_DB_PASSWD_', '$DBPASSWORD');
+define('_DB_PREFIX_', 'ps_');
+define('_MYSQL_ENGINE_', 'InnoDB');
+define('__PS_BASE_URI__', '/');
+define('_PS_CACHING_SYSTEM_', 'MCached');
+define('_PS_CACHE_ENABLED_', '0');
+define('_MEDIA_SERVER_1_', '');
+define('_MEDIA_SERVER_2_', '');
+define('_MEDIA_SERVER_3_', '');
+define('_THEME_NAME_', 'prestashop');
+define('_COOKIE_KEY_', 'c89JgDRk3F0D1Xy5ScCv0jcV2EKvQmkZaGLR2r1D6wtGeTIFcgF6o1Nf');
+define('_COOKIE_IV_', 'MVQsiYRU');
+define('_PS_CREATION_DATE_', '$CURRENT_DATE');
+define('_PS_VERSION_', '1.4.8.2');
+?>" > $CONFIGURATIONFILE
+	chown -R mysql:mysql $MYSQL_DIR/$DBNAME/*
+
+	mysql -u $DBUSERNAME -p$DBPASSWORD -e "FLUSH PRIVILEGES;" $DBNAME --host=$SERVER
+	if [ -z $SUBDOMAIN ]
+		then
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_configuration SET date_add='$CURRENT_TIME', date_upd='$CURRENT_TIME';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_configuration SET value='$CURRENT_TIME' WHERE value='2012-06-17 20:45:13';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_configuration SET value='http://www.$DOMAINNAME' WHERE value='http://www.yoursite.com';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_configuration SET value='www.$DOMAINNAME' WHERE value='www.domain.com';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_contact SET email='admin@$DOMAINNAME';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_employee SET email='admin@$DOMAINNAME';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_configuration SET value='admin@$DOMAINNAME' WHERE value='info@domain.com'; flush privileges" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_configuration SET value='$SITENAME' WHERE value='Presta Shop'; flush privileges" $DBNAME --host=$SERVER
+		else
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_configuration SET date_add='$CURRENT_TIME', date_upd='$CURRENT_TIME';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_configuration SET value='$CURRENT_TIME' WHERE value='2012-06-17 20:45:13';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_configuration SET value='http://$SUBDOMAIN.$DOMAINNAME' WHERE value='http://www.yoursite.com';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_configuration SET value='$SUBDOMAIN.$DOMAINNAME' WHERE value='www.domain.com';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_contact SET email='admin@$DOMAINNAME';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_employee SET email='admin@$DOMAINNAME';" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_configuration SET value='admin@$DOMAINNAME' WHERE value='info@domain.com'; flush privileges" $DBNAME --host=$SERVER
+			mysql -u $DBUSERNAME -p$DBPASSWORD -e "UPDATE ps_configuration SET value='$SITENAME' WHERE value='Presta Shop'; flush privileges" $DBNAME --host=$SERVER
+	fi
+	mysql -u $DBUSERNAME -p$DBPASSWORD -e "FLUSH PRIVILEGES;" $DBNAME --host=$SERVER
+
+	if [ -z $SUBDOMAIN ]
+		then
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/httpdoc$DIRECTORY/install
+		else
+			chown -R $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/*
+			chown $FTPUSER:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/
+			rm -rf $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY/install
+	fi
+	if [ -z $SUBDOMAIN ]
+		then
+			$KWNG_LOG --success --code=3609 --message="Prestashop installed on $DOMAINNAME"
+		else
+			$KWNG_LOG --success --code=3609 --message="Prestashop installed on $SUBDOMAIN.$DOMAINNAME"
+	fi
+}
+
+function get_package() {
+
+	if [ ! -d $HTTPDOC_DIR ]
+		then
+			mkdir -p $HTTPDOC_DIR >/dev/null 2>&1
+	fi
+
+	if [ ! -d $DB_DIR ]
+		then
+			mkdir -p $DB_DIR >/dev/null 2>&1
+	fi
+
+	for PKG_NAME in $PKG_LIST
+	do
+		if [ -f $HTTPDOC_DIR/$PKG_NAME.tgz ]
+			then
+				rm -rf $HTTPDOC_DIR/$PKG_NAME.tgz
+		fi
+		if [ -f $DB_DIR/$PKG_NAME.tgz ]
+			then
+				rm -rf $DB_DIR/$PKG_NAME.tgz
+		fi
+
+		cd $HTTPDOC_DIR && \
+			wget $APPS_SERVER/httpdoc/$PKG_NAME.tgz -q
+
+		cd $DB_DIR && \
+			wget $APPS_SERVER/databases/$PKG_NAME.tgz -q
+	done
+	$KWNG_LOG --success --code=3610 --message="Applications downloaded"
+}
+function get_list_from_apps_server() {
+
+	JSON_DATA=`echo -e "GET /xo.apps.list HTTP/1.0\nHost: $APPS_SERVER\n\n" | $NETCAT -t $APPS_SERVER 80 | tail -1`
+
+	echo "$JSON_DATA"
+
+}
+
+function main_case() {
+	while [ "$1" != "" ]
+	do
+		case $1 in
+			--domain=*)
+				DOMAINNAME=`echo "$1"| sed 's/--domain=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--ftp-user=*)
+				FTPUSER=`echo "$1"| sed 's/--ftp-user=//g'`
+				;;
+			--ftp-passwd=*)
+				FTPPASSWD=`echo "$1"| sed 's/--ftp-passwd=//g'`
+				;;
+			--dbname=*)
+				DBNAME=`echo "$1"| sed 's/--dbname=//g'`
+				;;
+			--dbuname=*)
+				DBUSERNAME=`echo "$1"| sed 's/--dbuname=//g'`
+				;;
+			--dbpasswd=*)
+				DBPASSWORD=`echo "$1"| sed 's/--dbpasswd=//g'`
+				;;
+			--sitename=*)
+				SITENAME=`echo "$1" | sed 's/--sitename=//g' | sed 's/#/ /g'`
+				;;
+			--directory=*)
+				DIRECTORY=`echo "$1" | sed 's/--directory=//g'`
+				;;
+			--remove-content=*)
+				REMOVECONTENT=`echo "$1"| sed 's/--remove-content=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--pkg-list=*)
+				PKG_LIST=`echo "$1"| sed 's/--pkg-list=//g' | tr '[A-Z]' '[a-z]' | tr '#' ' '`
+				;;
+			--server=*)
+				SERVER=`echo "$1" | sed 's/--server=//g' | tr '[A-Z]' '[a-z]' | tr ',' ' '`
+				;;
+			--subdomain=*)
+				SUBDOMAIN=`echo "$1" | sed 's/--subdomain=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--username=*)
+				SITE_USERNAME=`echo "$1" | sed 's/--username=//g'`
+				;;
+			--password=*)
+				SITE_PASSWORD=`echo "$1" | sed 's/--password=//g'`
+				;;
+		esac
+		shift
+	done
+}
+
+function usage() {
+echo "Usage" > /dev/null
+}
+
+#########################
+##### MAIN FUNCTION #####
+#########################
+check_command
+check_root
+
+PROC_MESSAGE=`echo "Process:$0 $@" | sed 's|["'\'']||g'`
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+
+PROCESS="$1"
+
+case $PROCESS in
+	--joomla15)
+		shift
+		main_case "$@"
+		joomla15_check
+		joomla15_install
+		;;
+	--joomla17)
+		shift
+		main_case "$@"
+		joomla17_check
+		joomla17_install
+		;;
+	--joomla25)
+		shift
+		main_case "$@"
+		joomla25_check
+		joomla25_install
+		;;
+	--joomla30)
+		shift
+		main_case "$@"
+		joomla30_check
+		joomla30_install
+		;;
+	--wordpress)
+		shift
+		main_case "$@"
+		wordpress_check
+		wordpress_install
+		;;
+	--drupal)
+		shift
+		main_case "$@"
+		drupal_check
+		drupal_install
+		;;
+	--phpbb3)
+		shift
+		main_case "$@"
+		phpbb3_check
+		phpbb3_install
+		;;
+	--smf)
+		shift
+		main_case "$@"
+		smf_check
+		smf_install
+		;;
+	--presta)
+		shift
+		main_case "$@"
+		presta_check
+		presta_install
+		;;
+	--get-pkg)
+		shift
+		main_case "$@"
+		get_package
+		;;
+	--get-list)
+		shift
+		get_list_from_apps_server
+		;;
+esac

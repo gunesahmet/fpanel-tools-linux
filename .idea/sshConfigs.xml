@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SshConfigs">
+    <configs>
+      <sshConfig authType="PASSWORD" host="192.168.139.248" id="2ba24054-0650-41b0-b597-2feb3275367f" port="22" customName="Debian Dev 248" nameFormat="CUSTOM" username="root">
+        <option name="customName" value="Debian Dev 248" />
+      </sshConfig>
+      <sshConfig authType="PASSWORD" host="192.168.139.53" id="01f305e1-2eae-4717-a4ef-44d9484f4822" port="22" customName="Debian 10 Test" nameFormat="CUSTOM" username="root">
+        <option name="customName" value="Debian 10 Test" />
+      </sshConfig>
+    </configs>
+  </component>
+</project>

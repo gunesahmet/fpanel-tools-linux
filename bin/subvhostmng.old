@@ -1,0 +1,537 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+
+exec 2>/dev/null
+
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+	
+	if [ -x "$KWNG_ENV" ]; then
+              IFS='
+              '
+              export `$KWNG_ENV --debug | grep -v "^#"`
+              IFS=' '
+       else
+              $KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+              exit 1000
+	fi
+	if [ -f $SYSTEM_PACKAGE_CONF ]; then
+		. $SYSTEM_PACKAGE_CONF
+       else
+              $KWNG_LOG --error --code=1002 --message="Unable to load installed system packages. Please contact with system administrator."
+              exit 1002
+	fi
+
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]; then
+              $KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+              exit 1001
+	fi
+}
+function check_etc_passwd_file() {
+	if [ ! -s $USER_PASSWD ]; then
+              $KWNG_LOG --error --code=1002 --message="$USER_PASSWD doesn't exist"
+              exit 1002
+	fi
+}
+
+function check_user_in_etc_passwd() {
+	STATUS=`grep "^$1:.*" "$USER_PASSWD"`
+	if [ "X$STATUS" = "X" ]; then
+              echo "0"  # User sistemde yok !!
+       else
+              echo "1"  # User sistemde var !!
+       fi
+}
+function check_main_domain_in_etc_passwd() {
+	STATUS=`grep ".*/$1:.*" "$USER_PASSWD"`
+	if [ "X$STATUS" = "X" ]; then
+              echo "0"  # Main Domain sistemde yok !!
+       else
+              echo "1"  # Main Domain sistemde var !!
+       fi
+}
+function check_sub_domain_in_etc_passwd() {
+	STATUS=`grep ".*/$1/subdomains/$2:.*" "$USER_PASSWD"`
+	if [ "X$STATUS" = "X" ]; then
+              echo "0"  # Main Domain sistemde yok !!
+       else
+              echo "1"  # Main Domain sistemde var !!
+       fi
+}
+function check_user_with_sub_domain_in_etc_passwd() {
+#       echo "^$1:.*/$2/subdomains/$3:.*" "$USER_PASSWD" >> "/var/log/fpanel/debug.log"
+	STATUS=`grep "^$1:.*/$2/subdomains/$3:.*" "$USER_PASSWD"`
+	if [ "X$STATUS" = "X" ]; then
+              echo "0"  # User ve Main Domain ayni satirda olacak sekilde sistemde yok !!
+       else
+              echo "1"  # User ve Main Domain ayni satirda olacak sekilde sistemde var !!
+       fi
+}
+function check_sub_domain_from_vhost_conf() {
+	if [ ! -f "$DOMAIN_CONFIGS_DIR/$1/subdomains/$2.httpd.include$3" ]; then
+              echo "0" # Sub Domain icin $SUBDOMAINNAME.httpd.include dosyası yok..
+       else
+              echo "1" # Sub Domain icin $SUBDOMAINNAME.httpd.include dosyası var..
+	fi
+}
+
+function create_apache_include_conf() {
+	# Default Configuration
+	echo "# DONT EDIT THIS FILE..
+<VirtualHost $IPADDR:80>
+	ServerName   $SUBDOMAINNAME.$DOMAINNAME:80
+	ServerAlias  $SUBDOMAINNAME.$DOMAINNAME
+	UseCanonicalName Off
+	ServerAdmin  \"admin@$DOMAINNAME\"
+	DocumentRoot $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME/httpdoc
+	RMode config
+	RUidGid $USERNAME $NOGROUP
+	RGroups $NOGROUP
+	
+	<IfModule logio_module>
+		LogFormat \"%h %l %u %t \\\"%r\\\" %>s %O \\\"%{Referer}i\\\" \\\"%{User-Agent}i\\\"\" combinedio
+	</IfModule>	
+
+	CustomLog  $DOMAIN_LOGS_DIR/$DOMAINNAME/web/access.log combinedio
+	ErrorLog  $DOMAIN_LOGS_DIR/$DOMAINNAME/web/error.log
+
+	Include $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.passwd.include" > $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include
+
+	# CGI Support
+	if [ "$CGISUPPORT" = "on" ];then
+              echo "
+       ScriptAlias  /cgi-bin/ $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME/cgi-bin/" >> $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include
+	fi
+
+	# Default Configuration
+	echo "
+	<Directory $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME/httpdoc>" >> $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include
+
+	# Perl Support
+	if [ "$PERLSUPPORT" = "on" ]; then
+              echo "
+		<IfModule mod_perl.c>
+			<Files ~ (\.pl$)>
+				SetHandler perl-script
+				PerlHandler ModPerl::Registry
+				Options ExecCGI
+				allow from all
+				PerlSendHeader On
+			</Files>
+		</IfModule>" >> $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include
+	fi
+	
+	# PHP Support
+	if [ "$PHPSUPPORT" = "on" ]; then
+              echo "
+		<IfModule mod_php7.c>
+			php_admin_flag engine on
+			php_admin_value open_basedir \"$VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME/httpdoc:/tmp\"
+		</IfModule>" >> $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include
+       else
+			echo "
+		<IfModule mod_php7.c>
+			php_admin_flag engine off
+		</IfModule>" >> $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include
+	fi
+
+	# Default Configuration
+	echo "
+		Options -Indexes -Includes +ExecCGI
+		Options Indexes FollowSymLinks
+		AllowOverride All
+		Require all granted		
+	</Directory>
+</VirtualHost>" >> $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include
+
+	# Include edilen dosyalar olusturuluyor
+	touch $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.passwd.include
+
+	echo "$SUBDOMAINNAME.$DOMAINNAME" > $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME/httpdoc/index.html
+	chown $USERNAME:$NOGROUP $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME/httpdoc/index.html
+}
+function create_nginx_include_conf() {
+echo "server {
+	listen   $IPADDR:80;
+	root $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME/httpdoc;
+	index index.php index.html index.htm;
+	access_log $DOMAIN_LOGS_DIR/$DOMAINNAME/web/access.log combined_json;
+	error_log $DOMAIN_LOGS_DIR/$DOMAINNAME/web/error.log;
+
+       include $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME/prodir/*.include;
+
+	server_name $SUBDOMAINNAME.$DOMAINNAME;
+	# Rewrite
+	location / {
+		root $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME/httpdoc/;
+		index  index.php index.html index.htm;" > $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include
+	if [ "$PHPSUPPORT" = "on" ]; then
+	echo "
+	       location ~ \.php$ {
+		       fastcgi_pass unix:$DOMAIN_CONFIGS_DIR/$DOMAINNAME/spool/$SUBDOMAINNAME.$DOMAINNAME.sock;
+		       fastcgi_index index.php;
+		       include fastcgi_params;
+		       fastcgi_split_path_info ^(.+\\.php)(/.+)\$;
+		       fastcgi_param  SCRIPT_FILENAME  \$document_root\$fastcgi_script_name;
+                     fastcgi_param  QUERY_STRING     \$query_string;
+                     fastcgi_param  REQUEST_METHOD   \$request_method;
+                     fastcgi_param  CONTENT_TYPE     \$content_type;
+                     fastcgi_param  CONTENT_LENGTH   \$content_length;
+                     fastcgi_intercept_errors        on;
+                     fastcgi_ignore_client_abort     on;
+                     fastcgi_connect_timeout 60;
+                     fastcgi_send_timeout 180;
+                     fastcgi_read_timeout 180;
+                     fastcgi_buffer_size 128k;
+                     fastcgi_buffers 4 256k;
+                     fastcgi_busy_buffers_size 256k;
+                     fastcgi_temp_file_write_size 256k;
+              }" >> $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include
+       fi
+       echo "
+       }" >> $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include
+
+       echo "
+	location ~ /\.ht {
+		deny all;
+       }
+}" >> $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include
+
+	if [ "$PHPSUPPORT" = "on" ]; then
+              echo "[$SUBDOMAINNAME.$DOMAINNAME]
+listen = $DOMAIN_CONFIGS_DIR/$DOMAINNAME/spool/$SUBDOMAINNAME.$DOMAINNAME.sock
+listen.owner = $USERNAME
+listen.group = $NOGROUP
+listen.mode = 0777
+user = $USERNAME
+group = $NOGROUP
+pm = dynamic
+pm.max_children = 50
+pm.start_servers = 20
+pm.min_spare_servers = 5
+pm.max_spare_servers = 35
+chdir = $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME/httpdoc
+php_admin_value[open_basedir] = $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME/httpdoc:/tmp
+php_admin_value[disable_functions] = exec,shell_exec,system,proc_open
+" > $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.php.conf
+
+	echo "include=$DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.php.conf" >> $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/php.conf
+	fi
+}
+function create_httpd_include_conf() {
+	[[ "$HTTPD_SERVER" = "apache" ]] && create_apache_include_conf
+	[[ "$HTTPD_SERVER" = "nginx" ]] && create_nginx_include_conf
+	[[ "$HTTPD_SERVER" = "nginx" ]] && $SERVICESMNG --reload --service=web
+	$SERVICESMNG --reload --service=web
+}
+
+function main_case() {
+	while [ "$1" != "" ]
+	do
+		case $1 in
+			--user=*)
+				USERNAME=`echo $1 | sed 's/--user=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+                     --sub-user=*)
+				SUBUSERNAME=`echo $1 | sed 's/--sub-user=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--domain=*)
+				DOMAINNAME=`echo $1 | sed 's/--domain=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--subdomain=*)
+				SUBDOMAINNAME=`echo $1 | sed 's/--subdomain=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--ipaddr=*)
+				IPADDR=`echo $1 | sed 's/--ipaddr=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--old-ipaddr=*)
+				OLDIPADDR=`echo $1 | sed 's/--old-ipaddr=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--ssl=*)
+				SSLSUPPORT=`echo $1 | sed 's/--ssl=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--php=*)
+				PHPSUPPORT=`echo $1 | sed 's/--php=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--safemode=*)
+				SAFEMODSTATUS=`echo $1 | sed 's/--safemode=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--cgi=*)
+				CGISUPPORT=`echo $1 | sed 's/--cgi=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--perl=*)
+				PERLSUPPORT=`echo $1 | sed 's/--perl=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--python=*)
+				PYTHONSUPPORT=`echo $1 | sed 's/--python=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--new-user=*)
+				NEW_USERNAME=`echo $1 | sed 's/--new-user=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--ftp-type=*)
+				FTP_TYPE=`echo $1 | sed 's/--ftp-type=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+		esac
+		shift
+	done
+
+}
+
+function vhost_create() {
+	create_httpd_include_conf
+	$KWNG_LOG --success --code=2401 --message="$SUBDOMAINNAME Vhost created for $DOMAINNAME"
+	exit 0
+}
+function vhost_create_check_flag() {
+	if [ -z $DOMAINNAME ] || [ -z $IPADDR ] || [ -z $SUBDOMAINNAME ]; then
+              $KWNG_LOG --error --code=2401 --message="Missing arguments"
+              usage
+              exit 2401
+	fi
+
+	STATUS=`check_main_domain_in_etc_passwd $DOMAINNAME`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=2402 --message="$DOMAINNAME not found in $USER_PASSWD"
+              exit 2402
+	fi
+
+	STATUS=`check_sub_domain_from_vhost_conf $DOMAINNAME $SUBDOMAINNAME`
+	if [ "$STATUS" = "1" ]; then
+              $KWNG_LOG --error --code=2403 --message="$SUBDOMAINNAME's and $DOMAINNAME's found vhost config file"
+              exit 2403
+	fi
+}
+
+function vhost_update() {
+	create_httpd_include_conf
+	$KWNG_LOG --success --code=2402 --message="$SUBDOMAINNAME Vhost config updated for $DOMAINNAME"
+	exit 0
+}
+function vhost_update_check_flag() {
+	if [ -z $USERNAME ] || [ -z $DOMAINNAME ] || [ -z $SUBDOMAINNAME ]; then
+              $KWNG_LOG --error --code=2404 --message="Missing arguments"
+              usage
+              exit 2404
+	fi
+       if [ "$FTP_TYPE" != "main" ]; then
+              if [ -z $SUBUSERNAME ]; then
+                     $KWNG_LOG --error --code=2404 --message="Missing arguments"
+                     usage
+                     exit 2404
+              fi
+              USERNAME="$SUBUSERNAME"
+       fi
+	STATUS=`check_user_in_etc_passwd $USERNAME`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=2405 --message="$USERNAME not found in $USER_PASSWD"
+              exit 2405
+	fi
+	
+	STATUS=`check_main_domain_in_etc_passwd $DOMAINNAME`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=2406 --message="$DOMAINNAME not found in $USER_PASSWD"
+              exit 2406
+	fi
+	
+	# Onemli!!!
+	# Eger ftp type main degilde baska bir deger gelirse buradaki islem etc/passwd altinda bu subdomain kontrol edilecek
+	# Boylece subdomainin gercekten native olup olmadigi gorulebilecek
+	# Eger Main gelirse ki bu durumda zaten bu subdomain passwd de yer almayacak
+	# O zaman burada ki kontrol ise yaramaz olacaktir
+	if [ "$FTP_TYPE" != "main" ]; then
+		STATUS=`check_user_with_sub_domain_in_etc_passwd $USERNAME $DOMAINNAME $SUBDOMAINNAME`
+		if [ "$STATUS" = "0" ]; then
+                     $KWNG_LOG --error --code=2407 --message="$USERNAME, $DOMAINNAME or $SUBDOMAINNAME not found in $USER_PASSWD"
+                     exit 2407
+		fi
+	fi
+
+	STATUS=`check_sub_domain_from_vhost_conf $DOMAINNAME $SUBDOMAINNAME`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=2408 --message="$DOMAINNAME or $SUBDOMAINNAME not found vhost conf"
+              exit 2408
+	fi
+}
+
+function vhost_remove() {
+	rm -rf $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.*
+	sed -i 's/'"$DOMAIN_CONFIGS_DIR"'\/'"$DOMAINNAME"'\/subdomains\/'"$SUBDOMAINNAME"'\.php\.conf//g' $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/php.conf
+	[[ "$HTTPD_SERVER" = "nginx" ]] && $SERVICESMNG --reload --service=web
+	$SERVICESMNG --reload --service=web
+	$KWNG_LOG --success --code=2403 --message="$SUBDOMAINNAME removed from $DOMAINNAME"
+	exit 0
+}
+function vhost_remove_check_flag() {
+	if [ -z $DOMAINNAME ] || [ -z $SUBDOMAINNAME ]; then
+              $KWNG_LOG --error --code=2409 --message="Missing arguments"
+              usage
+              exit 2409
+	fi	
+}
+
+function vhost_update_user() {
+	if [ "$HTTPD_SERVER" = "apache" ]; then
+              sed -i 's/RUidGid '"$USERNAME"' '"$NOGROUP"'/RUidGid '"$NEW_USERNAME"' '"$NOGROUP"'/g' $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include
+       else
+              sed -i 's/listen.owner.*=.*'"$USERNAME"'/listen.owner.*=.*'"$NEW_USERNAME"'/g' $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.php.conf
+              sed -i 's/user.*=.*'"$USERNAME"'/user.*=.*'"$NEW_USERNAME"'/g' $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.php.conf
+	fi
+	[[ "$HTTPD_SERVER" = "nginx" ]] && $SERVICESMNG --reload --service=php_fpm
+	$SERVICESMNG --reload --service=web
+	$KWNG_LOG --success --code=2404 --message="Vhost updated for $SUBDOMAINNAME"
+	exit 0
+}
+function vhost_update_user_check_flag() {
+	if [ -z $USERNAME ] || [ -z $DOMAINNAME ] || [ -z $NEW_USERNAME ] || [ -z $SUBDOMAINNAME ]; then
+              $KWNG_LOG --error --code=2410 --message="Missing arguments"
+              usage
+              exit 2410
+	fi
+	STATUS=`check_user_etc_passwd $NEW_USERNAME`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=2411 --message="$NEW_USERNAME not found in $USER_PASSWD"
+              exit 2411
+	fi
+
+	STATUS=`check_main_domain_in_etc_passwd $DOMAINNAME`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=2412 --message="$DOMAINNAME not found in $USER_PASSWD"
+              exit 2412
+	fi
+
+	STATUS=`check_main_domain_with_username_etc_passwd $NEW_USERNAME $DOMAINNAME`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=2413 --message="$NEW_USERNAME and $DOMAINNAME not found in $USER_PASSWD"
+              exit 2413
+	fi
+
+	STATUS=`check_main_domain_from_vhost_conf $DOMAINNAME`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=2414 --message="$DOMAINNAME vhost config doesn't exist"
+              exit 2414
+	fi
+}
+
+function vhost_suspend() {
+	mv $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include  $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include.suspend
+	mv $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.php.conf  $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.php.conf.suspend
+	
+	[[ "$HTTPD_SERVER" = "nginx" ]] && $SERVICESMNG --reload --service=php_fpm
+	$SERVICESMNG --reload --service=web
+
+	$KWNG_LOG --success --code=2405 --message="$SUBDOMAINNAME suspended for $DOMAINNAME"
+	exit 0
+}
+function vhost_suspend_check_flag() {
+	if [ -z $DOMAINNAME ] || [ -z $SUBDOMAINNAME ]; then
+              $KWNG_LOG --error --code=2415 --message="Missing arguments"
+              usage
+              exit 2415
+	fi	
+
+	STATUS=`check_sub_domain_from_vhost_conf $DOMAINNAME $SUBDOMAINNAME`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=2416 --message="$SUBDOMAINNAME or $DOMAINNAME not found vhost conf"
+              exit 2416
+	fi
+}
+
+function vhost_unsuspend() {
+	mv $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include.suspend  $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include
+	[[ "$HTTPD_SERVER" = "nginx" ]] && $SERVICESMNG --reload --service=php_fpm
+	$SERVICESMNG --reload --service=web
+	$KWNG_LOG --success --code=2406 --message="$SUBDOMAINNAME unsuspended for $DOMAINNAME"
+	exit 0
+}
+function vhost_unsuspend_check_flag() {
+	if [ -z $DOMAINNAME ] || [ -z $SUBDOMAINNAME ]; then
+              $KWNG_LOG --error --code=2417 --message="Missing arguments"
+              usage
+              exit 2417
+	fi	
+
+	STATUS=`check_sub_domain_from_vhost_conf $DOMAINNAME $SUBDOMAINNAME .suspend`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=2418 --message="$SUBDOMAINNAME or $DOMAINNAME not found vhost conf"
+              exit 2418
+	fi
+}
+
+function vhost_update_change_ipaddr() {
+	sed -i 's/'"$OLDIPADDR"'/'"$IPADDR"'/g' $DOMAIN_CONFIGS_DIR/$DOMAINNAME/subdomains/$SUBDOMAINNAME.httpd.include
+	$KWNG_LOG --success --code=2407 --message="Ip Address changed for $SUBDOMAINNAME.DOMAINNAME"
+	exit 0
+}
+function vhost_update_change_ipaddr_check_flag() {
+	if [ -z $DOMAINNAME ] || [ -z $SUBDOMAINNAME ] || [ -z $OLDIPADDR ] || [ -z $IPADDR ]; then
+              $KWNG_LOG --error --code=2419 --message="Missing arguments"
+              usage
+              exit 2419
+	fi	
+}
+
+function usage() {
+	echo "Usage: None" >/dev/null
+}
+
+#########################
+##### MAIN FUNCTION #####
+#########################
+
+check_command
+check_root
+check_etc_passwd_file
+
+PROC_MESSAGE=`echo "Process:$0 $@" | sed 's|["'\'']||g'`
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+PROCESS="$1"
+
+case $PROCESS in
+	--create)
+		shift
+		main_case "$@"
+		vhost_create_check_flag
+		vhost_create
+		;;
+	--update)
+		shift
+		main_case "$@"
+		vhost_update_check_flag
+		vhost_update
+		;;
+	--remove)
+		shift
+		main_case "$@"
+		vhost_remove_check_flag
+		vhost_remove
+		;;
+	--suspend)
+		shift
+		main_case "$@"
+		vhost_suspend_check_flag
+		vhost_suspend
+		;;
+	--unsuspend)
+		shift
+		main_case "$@"
+		vhost_unsuspend_check_flag
+		vhost_unsuspend
+		;;
+	--update-user)
+		shift
+		main_case "$@"
+		vhost_update_user_check_flag
+		vhost_update_user
+		;;
+	--change-ipaddr)
+		shift
+		main_case "$@"
+		vhost_update_change_ipaddr_check_flag
+		vhost_update_change_ipaddr
+		;;
+esac

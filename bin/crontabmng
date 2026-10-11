@@ -1,0 +1,286 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+
+exec 2>/dev/null
+
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+	
+	if [ -x "$KWNG_ENV" ]
+		then
+			IFS='
+			'
+			export `$KWNG_ENV --debug | grep -v "^#"`
+			IFS=' '
+		else
+			$KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+			exit 1000
+	fi
+
+	
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]
+		then
+			$KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+			exit 1001
+	fi
+
+}
+function check_etc_passwd_file() {
+	if [ ! -s $USER_PASSWD ]
+		then
+			$KWNG_LOG --error --code=1003 --message="$USER_PASSWD doesn't exist"
+			exit 1003
+	fi
+}
+
+function create_cron_check_flag() {
+	if [ -z "$JOB" ] || [ -z "$MINUTE" ] || [ -z "$TIMESTAMP" ]; then
+              $KWNG_LOG --error --code=3701 --message="Crontab - Username, Job or Minute is null"
+              exit 3701
+	fi
+
+	[ -z "$HOUR" ] && HOUR="*"
+	[ -z "$DAY" ] && DAY="*"
+	[ -z "$WEEK" ] && WEEK="*"
+	[ -z "$MONTH" ] && MONTH="*"
+
+}
+function create_cron() {
+       if [ ! -z "$USERNAME" ]; then
+              if [ ! -d "$DOMAIN_LOGS_DIR/$DOMAINNAME/cron" ]; then
+                     mkdir -p "$DOMAIN_LOGS_DIR/$DOMAINNAME/cron"
+              fi
+       fi
+
+	DECODED_JOB=`$FCRYPT -d --in="${JOB}"`
+
+       if [ -z "$USERNAME" ]; then
+              USERNAME="root"
+       fi
+
+       echo "$MINUTE $HOUR    $DAY $WEEK $MONTH $DECODED_JOB >> $PANEL_LOG_DIR/cron.log # $TIMESTAMP" >> $CRONTAB_DIR/root
+       sed -i '/^$/d' $CRONTAB_DIR/root
+	exit 0
+}
+
+function remove_cron_check_flag() {
+	if [ -z "$TIMESTAMP" ]; then
+              $KWNG_LOG --error --code=3702 --message="Timestamp - Username is null"
+              exit 3702
+	fi
+}
+function remove_cron() {
+	if [ -z "$USERNAME" ]; then
+       	USERNAME="root"
+	fi
+
+       sed -i 's/.*'"$TIMESTAMP"'.*//g' $CRONTAB_DIR/root
+       sed -i '/^$/d' $CRONTAB_DIR/root
+
+	$KWNG_LOG --success --code=3702 --message="$USERNAME cronjob removed"
+	exit 0
+}
+
+function remove_perm_cron_check_flag() {
+       echo ""
+}
+function remove_perm_cron() {
+       if [ -z "$USERNAME" ]; then
+              USERNAME="root"
+       fi
+#	--user=fpaneldev
+       sed -i 's/.*--user='"$USERNAME"' .*//g' $CRONTAB_DIR/root
+       sed -i '/^$/d' $CRONTAB_DIR/root
+	$KWNG_LOG --success --code=3703 --message="$USERNAME all cronjobs removed"
+	exit 0
+}
+
+function make_jail_domain_check_flag() {
+	if [ -z "$DOMAINNAME" ]; then
+              $KWNG_LOG --error --code=3705 --message="$DOMAINNAME is null"
+              exit 3705
+	fi
+}
+function make_jail_domain() {
+	JAIL_HOME="$VHOSTS_DIR/$DOMAINNAME"
+	mkdir -p $JAIL_HOME/{bin,lib,lib64,usr/bin,dev}
+	
+	mknod $JAIL_HOME/dev/null c 2 2
+	mknod $JAIL_HOME/dev/random c 1 8
+	mknod $JAIL_HOME/dev/urandom c 1 9
+	
+	cp /bin/{bash,cat,chmod,cp,date,echo,false} $JAIL_HOME/bin/
+	cp /bin/{grep,gunzip,gzip,ln,ls,mkdir} $JAIL_HOME/bin/
+	cp /bin/{more,mv,pwd,rm,rmdir,sed,sleep,sh} $JAIL_HOME/bin/
+	cp /bin/{tar,touch,true} $JAIL_HOME/bin/
+	
+	cp /usr/bin/{[,awk,base64,basename,bc,cut,du,env,ex} $JAIL_HOME/usr/bin/
+	cp /usr/bin/{expr,find,id,groups,head,lzma,scp} $JAIL_HOME/usr/bin/
+	cp /usr/bin/{tail,stat,touch,tr,uniq,wc,whoami} $JAIL_HOME/usr/bin/
+	cp /usr/bin/{wget,zip,unzip,sort,curl,less} $JAIL_HOME/usr/bin/
+	
+	BIN_FILES=`ls $JAIL_HOME/bin`
+	while read k
+	do
+		if [ ! -z "$k" ];then
+			REQ=`ldd /bin/$k | egrep -o '/lib.*\.[0-9]'`
+			while read i
+			do
+				if [ ! -z "$i" ]; then
+					BSNAME=`basename $i`
+					BSDIR=`echo $i | sed 's/'"$BSNAME"'//g'`
+					if [ ! -d $JAIL_HOME/$BSDIR ]
+					then
+						mkdir -p $JAIL_HOME/$BSDIR
+					fi
+					cp $i $JAIL_HOME/$BSDIR
+				fi
+			done <<< $REQ
+		fi
+	done <<< $BIN_FILES
+	
+		exit 0
+
+	for k in `ls $JAIL_HOME/usr/bin/`
+	do
+		REQ=`ldd /usr/bin/$k | egrep -o '/lib.*\.[0-9]'`
+		for i in $REQ
+		do 
+			BSNAME=`basename $i`
+			BSDIR=`echo $i | sed 's/'"$BSNAME"'//g'`
+			if [ ! -d $JAIL_HOME/$BSDIR ]
+			then
+				mkdir -p $JAIL_HOME/$BSDIR
+			fi
+			cp $i $JAIL_HOME/$BSDIR
+		done
+	done
+}
+
+function remove_jail_domain_check_flag() {
+
+	if [ -z "$DOMAINNAME" ]
+		then
+			$KWNG_LOG --error --code=3705 --message="$DOMAINNAME is null"
+			exit 3705
+	fi
+
+}
+function remove_jail_domain() {
+	JAIL_HOME="$VHOSTS_DIR/$DOMAINNAME"
+	if [ -d $JAIL_HOME/bin ]; then
+		rm -rf $JAIL_HOME/bin
+	fi
+	if [ -d $JAIL_HOME/lib ]; then
+		rm -rf $JAIL_HOME/lib
+	fi
+	if [ -d $JAIL_HOME/lib64 ]; then
+		rm -rf $JAIL_HOME/lib64
+	fi
+	if [ -d $JAIL_HOME/usr/bin ]; then
+		rm -rf $JAIL_HOME/usr/bin
+	fi
+}
+
+function main_case() {
+
+	while [ "$1" != "" ]
+	do
+		case $1 in
+			--user=*)
+				USERNAME=`echo $1 | sed 's/--user=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--new-user=*)
+				NEWUSERNAME=`echo $1 | sed 's/--new-user=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--domain=*)
+				DOMAINNAME=`echo $1 | sed 's/--domain=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--minute=*)
+				MINUTE=`echo $1 | sed 's/--minute=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--hour=*)
+				HOUR=`echo $1 | sed 's/--hour=//g' | tr '[A-Z]' '[a-z]'` 
+				;;
+			--day=*)
+				DAY=`echo $1 | sed 's/--day=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--week=*)
+				WEEK=`echo $1 | sed 's/--week=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--month=*)
+				MONTH=`echo $1 | sed 's/--month=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--job=*)
+				JOB=`echo "$1" | sed 's/--job=//g' | sed 's/"//g'`
+				;;
+			--timestamp=*)
+				TIMESTAMP=`echo $1 | sed 's/--timestamp=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--old-timestamp=*)
+				OLD_TIMESTAMP=`echo $1 | sed 's/--old-timestamp=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+		esac
+		shift
+	done
+
+}
+
+function usage() {
+	echo "Usage: " >/dev/null
+}
+
+#########################
+##### Main Function #####
+#########################
+check_command
+check_root
+check_etc_passwd_file
+
+PROC_MESSAGE=`echo "Process:$0 $@" | sed 's|["'\'']||g'`
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+
+case $1 in
+	--create)
+		shift
+		main_case "$@"
+		create_cron_check_flag
+		create_cron
+		;;
+	--update)
+		shift
+		main_case "$@"
+		update_cron_check_flag
+		update_cron
+		;;
+	--remove)
+		shift
+		main_case "$@"
+		remove_cron_check_flag
+		remove_cron
+		;;
+	--remove-perm)
+		shift
+		main_case "$@"
+		remove_perm_cron_check_flag
+		remove_perm_cron
+		;;
+	--make-jail)
+		shift
+		main_case "$@"
+		make_jail_domain_check_flag
+		make_jail_domain
+		;;
+	--remove-jail)
+		shift
+		main_case "$@"
+		remove_jail_domain_check_flag
+		remove_jail_domain
+		;;
+esac
+

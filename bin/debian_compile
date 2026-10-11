@@ -1,0 +1,70 @@
+#!/bin/bash
+
+PACKAGE_DIR="/root/panel/packages/panel-core"
+CORE_PACKAGE_DIR="$PACKAGE_DIR/usr/local/fpanel/core"
+CORE_BIN_DIR="/usr/local/fpanel/core/bin"
+CORE_SBIN_DIR="/usr/local/fpanel/core/sbin"
+
+
+
+rm -rf $CORE_PACKAGE_DIR/bin/*
+rm -rf $CORE_PACKAGE_DIR/sbin/env
+rm -rf $CORE_PACKAGE_DIR/sbin/logger
+
+rm -rf $CORE_BIN_DIR/debug
+cd $CORE_BIN_DIR
+SKIP_FILES="debian_compile adminmng autoresponder backupmng cloudbackupmng filemng firewallmng cloudmng dnsmng domaliasmng filemng mailqueuemng mailsrvmng networkmng packagemng servicesmng sqlmng statisticsmng updatemng"
+for file in `ls $CORE_BIN_DIR`
+do
+  for i in $SKIP_FILES
+  do
+    if [ "$i" == "$file" ]; then
+        continue 2
+    fi
+  done
+
+	sed -i 's/# exec 2>\/dev\/null/exec 2>\/dev\/null/g' $file
+	sleep 0.1
+	sed -i 's/Kowengo/FPanel/g' $file
+	sleep 0.1
+
+	shc -rU -f $CORE_BIN_DIR/$file > /dev/null 2>&1
+	RETVAL=$?
+	if [ "$RETVAL" != "0" ]; then
+		echo "$CORE_BIN_DIR/$file compile failed"
+		exit 1
+	fi
+	echo "$file compiled."
+	rm -rf $CORE_BIN_DIR/$file.x.c
+
+	# rm -rf $CORE_PACKAGE_DIR/bin/$file
+	mv $CORE_BIN_DIR/$file.x $CORE_PACKAGE_DIR/bin/$file
+done
+MOVE_FILES="adminmng autoresponder backupmng cloudbackupmng filemng firewallmng cloudmng dnsmng domaliasmng filemng mailqueuemng mailsrvmng networkmng packagemng servicesmng sqlmng statisticsmng updatemng"
+for i in $SKIP_FILES; do
+	cp -rP $CORE_BIN_DIR/$i $CORE_PACKAGE_DIR/bin/$i
+done
+
+
+cd $CORE_SBIN_DIR
+
+sed -i 's/# exec 2>\/dev\/null/exec 2>\/dev\/null/g' $CORE_SBIN_DIR/env
+sleep 0.1
+sed -i 's/Kowengo/FPanel/g' $CORE_SBIN_DIR/env
+
+shc -rU -f $CORE_SBIN_DIR/env > /dev/null 2>&1
+RETVAL=$?
+if [ "$RETVAL" != "0" ]; then
+	echo "$CORE_SBIN_DIR/env compile failed"
+	exit 1
+fi
+echo "env compiled"
+
+rm -rf $CORE_SBIN_DIR/env.x.c
+
+mv $CORE_SBIN_DIR/env.x $CORE_PACKAGE_DIR/sbin/env
+#mv $CORE_SBIN_DIR/logger $CORE_PACKAGE_DIR/sbin/logger
+
+CURRENT_SIZE=`du -s $CORE_PACKAGE_DIR | awk '{print $1}'`
+let CURRENT_SIZE=CURRENT_SIZE*1024
+sed -i 's/Installed-Size:.*/Installed-Size: '"$CURRENT_SIZE"'/g' $PACKAGE_DIR/DEBIAN/control

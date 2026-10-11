@@ -1,0 +1,189 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+
+exec 2>/dev/null
+
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+	
+	if [ -x "$KWNG_ENV" ]; then
+              IFS='
+              '
+              export `$KWNG_ENV --debug | grep -v "^#"`
+              IFS=' '
+       else
+              $KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+              exit 1000
+	fi
+
+	if [ ! -f "$PANEL_CONFIG" ]; then
+              $KWNG_LOG --error --code=1002 --message="Fpanel config doesn't exists."
+              exit 1002
+	fi
+	SERVER="localhost"
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]; then
+              $KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+              exit 1001
+	fi
+}
+
+function auto_sync() {
+       if [ "$AUTO_SYNC" == "on" ]; then
+              timedatectl set-ntp 1
+       else
+              timedatectl set-ntp 0
+       fi
+}
+function time_edit_check_flag() {
+	if [ -z "$TIME" ]; then
+              $KWNG_LOG --error --code=7001 --message="Time format is null"
+              exit 7001
+	fi			
+}
+function time_edit() {
+	# date +%T -s "HH:MM:SS"
+	date +%T -s $TIME
+	$KWNG_LOG --success --code=7001 --message="Server time changed"
+	exit 0
+}
+
+function date_edit_check_flag() {
+	if [ -z "$DATE" ]; then
+              $KWNG_LOG --error --code=7002 --message="Date format is null"
+              exit 7002
+	fi			
+}
+function date_edit() {
+	# date +%Y%m%d -s "YYYYMMDD"
+	# timedatectl set-ntp 0 # Disable Sync
+	# timedatectl set-time YYYY-MM-DD
+	date +%Y%m%d -s "$DATE"
+	$KWNG_LOG --success --code=7002 --message="Server date changed"
+	exit 0
+}
+
+function time_zone_edit_check_flag() {
+	if [ -z "$TIMEZONE" ]; then
+              $KWNG_LOG --error --code=7003 --message="Timezone is null"
+              exit 7003
+	fi
+
+}
+function time_zone_edit() {
+	HOSTNAME=`hostname`
+	# ln -sf /usr/share/zoneinfo/Bolge/Ulke /etc/localtime
+	TIMEZONE=`echo $TIMEZONE |sed 's|["'\'']||g'`
+
+	ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
+	if [ "$SYSTEM_TYPE" = "centos" ]; then
+		echo "ZONE=\"$TIMEZONE\"" > /etc/sysconfig/clock
+	elif [ $SYSTEM_TYPE == "debian" ] || [ $SYSTEM_TYPE == "ubuntu" ]; then
+		echo "$TIMEZONE" > /etc/timezone
+	fi
+	if [ ! -z "$NTP_SERVER" ]; then
+              echo $NTP_SERVER > $PANEL_DIR/etc/last.ntpserver
+              ntpdate -t 5 $NTP_SERVER >/dev/null 2>&1
+              RETVAL=$?
+
+              if [ "$RETVAL" != "0" ];then
+                     for index in "0.asia.pool.ntp.org 1.asia.pool.ntp.org 2.asia.pool.ntp.org 3.asia.pool.ntp.org"; do
+                            # Timeout 5 sec.
+                            ntpdate -t 5 $index >/dev/null 2>&1
+                            RETVAL=$?
+                            if [ "$RETVAL" = "0" ]; then
+                                   break
+                            fi
+                     done
+              fi
+	fi
+
+	$KWNG_LOG --success --code=7003 --message="Server timezone changed"
+	exit 0
+}
+
+function show_date() {
+       CURRENT_DATE=`date +"%m-%d-%Y"`
+       CURRENT_TIME=`date +"%H:%M:%S"`
+       LAST_NTPSERVER=""
+       if [ -f "$PANEL_DIR/etc/last.ntpserver" ]; then
+              LAST_NTPSERVER=`cat /usr/local/fpanel/etc/last.ntpserver`
+       fi
+
+       case $SYSTEM_TYPE in
+              debian|ubuntu)
+                     CURRENT_TIMEZONE=`cat /etc/timezone | awk '{print $1}'`
+              ;;
+              centos)
+                     CURRENT_TIMEZONE=`cat /etc/sysconfig/clock |sed -e 's/=/ /g' -e 's/\"//g' |awk '{print $2}'`
+              ;;
+       esac
+       IS_SYNC=`timedatectl status | grep "NTP service" | grep -v "inactive"`
+       SYNCED="false"
+       [[ ! -z "$IS_SYNC" ]] && SYNCED="true"
+       DATA="{\"date\":\"$CURRENT_DATE\",\"time\":\"$CURRENT_TIME\",\"timezone\":\"$CURRENT_TIMEZONE\", \"ntp_address\":\"$LAST_NTPSERVER\", \"sync\":$SYNCED}"
+       echo $DATA
+}
+
+function main_case() {
+	while [ "$1" != "" ]; do
+		case $1 in
+			--date=*)
+				DATE=`echo "$1"| sed 's/--date=//g'`
+				;;
+			--time=*)
+				TIME=`echo "$1"| sed 's/--time=//g'`
+				;;
+			--zone=*)
+				TIMEZONE=`echo "$1"| sed 's/--zone=//g'`
+				;;
+			--ntp-server=*)
+				NTP_SERVER=`echo "$1"| sed 's/--ntp-server=//g'`
+				;;
+			--auto-sync=*)
+				AUTO_SYNC=`echo "$1"| sed 's/--auto-sync=//g'`
+				;;
+		esac
+		shift
+	done
+}
+
+check_command
+check_root
+PROC_MESSAGE=`echo "Process:$0 $@" | sed 's|["'\'']||g'`
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+PROCESS="$1"
+
+case $PROCESS in
+	--set-time)
+		shift
+		main_case "$@"
+		time_edit_check_flag
+		time_edit
+		;;
+	--set-date)
+		shift
+		main_case "$@"
+		date_edit_check_flag
+		date_edit
+		;;
+	--set-timezone)
+		shift
+		main_case "$@"
+		time_zone_edit_check_flag
+		time_zone_edit
+		;;
+	--show-date)
+		shift		
+		show_date
+		;;
+	--set-sync)
+		shift
+		main_case "$@"
+		auto_sync
+		;;
+esac

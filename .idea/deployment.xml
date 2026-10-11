@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="On explicit save action" serverName="Debian Dev 248" remoteFilesAllowedToDisappearOnAutoupload="false" confirmBeforeUploading="false" autoUploadExternalChanges="true" showAutoUploadSettingsWarning="false">
+    <option name="confirmBeforeUploading" value="false" />
+    <serverData>
+      <paths name="Debian 10 Test">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+          <excludedPaths>
+            <excludedPath local="true" path="$PROJECT_DIR$/.gitattributes" />
+            <excludedPath local="true" path="$PROJECT_DIR$/.idea" />
+            <excludedPath local="true" path="$PROJECT_DIR$/bin/debug" />
+            <excludedPath path="/bin/backupmng" />
+            <excludedPath path="/bin/domaliasmng" />
+            <excludedPath path="/bin/filemng" />
+            <excludedPath path="/bin/mailqueuemng" />
+            <excludedPath path="/bin/packagemng" />
+            <excludedPath path="/bin/sqlmng" />
+            <excludedPath path="/bin/statisticsmng" />
+            <excludedPath path="/bin/updatemng" />
+            <excludedPath path="/sbin/fsh" />
+            <excludedPath path="/sbin/7za" />
+            <excludedPath path="/sbin/lang" />
+            <excludedPath path="/sbin/agent" />
+            <excludedPath path="/sbin/agent-client" />
+            <excludedPath path="/sbin/fcrypt" />
+            <excludedPath path="/sbin/fpanel-core" />
+            <excludedPath path="/sbin/fpanel-core.bin" />
+            <excludedPath path="/sbin/limit" />
+            <excludedPath path="/sbin/netcat" />
+            <excludedPath path="/sbin/statistics" />
+            <excludedPath path="/sbin/webstatistics" />
+          </excludedPaths>
+        </serverdata>
+      </paths>
+      <paths name="Debian Dev 248">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+          <excludedPaths>
+            <excludedPath local="true" path="$PROJECT_DIR$/.gitattributes" />
+            <excludedPath local="true" path="$PROJECT_DIR$/.idea" />
+            <excludedPath local="true" path="$PROJECT_DIR$/bin/debug" />
+            <excludedPath path="/bin/backupmng" />
+            <excludedPath path="/bin/domaliasmng" />
+            <excludedPath path="/bin/filemng" />
+            <excludedPath path="/bin/mailqueuemng" />
+            <excludedPath path="/bin/packagemng" />
+            <excludedPath path="/bin/sqlmng" />
+            <excludedPath path="/bin/statisticsmng" />
+            <excludedPath path="/bin/updatemng" />
+            <excludedPath path="/sbin/fsh" />
+            <excludedPath path="/sbin/7za" />
+            <excludedPath path="/sbin/lang" />
+            <excludedPath path="/sbin/agent" />
+            <excludedPath path="/sbin/agent-client" />
+            <excludedPath path="/sbin/fcrypt" />
+            <excludedPath path="/sbin/fpanel-core" />
+            <excludedPath path="/sbin/fpanel-core.bin" />
+            <excludedPath path="/sbin/limit" />
+            <excludedPath path="/sbin/netcat" />
+            <excludedPath path="/sbin/statistics" />
+            <excludedPath path="/sbin/webstatistics" />
+            <excludedPath path="/bin/adminmng" />
+            <excludedPath path="/bin/networkmng" />
+            <excludedPath local="true" path="$PROJECT_DIR$/bin/adminmng" />
+          </excludedPaths>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ON_EXPLICIT_SAVE" />
+  </component>
+</project>

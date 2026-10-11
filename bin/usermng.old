@@ -1,0 +1,257 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+
+exec 2>/dev/null
+
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+
+	if [ -x "$KWNG_ENV" ]; then
+              IFS='
+              '
+              export `$KWNG_ENV --debug | grep -v "^#"`
+              IFS=' '
+       else
+              $KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+              exit 1000
+	fi
+
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]; then
+              $KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+              exit 1001
+	fi
+}
+function check_etc_passwd_file() {
+	if [ ! -s $USER_PASSWD ]; then
+              $KWNG_LOG --error --code=1002 --message="$USER_PASSWD doesn't exist"
+              exit 1002
+	fi
+}
+
+function check_user_in_etc_passwd() {
+       STATUS=`grep "^$1:.*" "$USER_PASSWD"`
+       if [ "X$STATUS" = "X" ]; then
+              echo "0"  # User sistemde yok !!
+       else
+              echo "1"  # User sistemde var !!
+       fi
+}
+function check_main_domain_in_etc_passwd() {
+	STATUS=`grep ".*/$1:.*" "$USER_PASSWD"`
+       if [ "X$STATUS" = "X" ]; then
+              echo "0"  # Main Domain sistemde yok !!
+       else
+              echo "1"  # Main Domain sistemde var !!
+       fi
+}
+
+function main_case() {
+	while [ "$1" != "" ]
+	do
+		case $1 in
+			--user=*)
+				USERNAME=`echo "$1"| sed 's/--user=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--domain=*)
+				DOMAINNAME=`echo "$1"| sed 's/--domain=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--passwd=*)
+				PASSWORD=`echo "$1"| sed 's/--passwd=//g'`
+				;;
+			--new-domain=*)
+				NEWDOMAINNAME=`echo "$1"| sed 's/--new-domain=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--new-passwd=*)
+				NEWPASSWORD=`echo "$1"| sed 's/--new-passwd=//g'`
+				;;
+			--new-user=*)
+				NEWUSERNAME=`echo "$1"| sed 's/--new-user=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+		esac
+		shift
+	done
+}
+
+function user_create() {
+	PASS=$(perl -e 'print crypt($ARGV[0], "PASSWORD")' $PASSWORD)
+	$USERADD -M -s $NO_LOGIN -d $VHOSTS_DIR/$DOMAINNAME -p $PASS $USERNAME  >/dev/null 2>&1
+	$KWNG_LOG --success --code=2601 --message="$USERNAME created for $DOMAINNAME"
+	exit 0
+}
+function user_create_check_flag() {
+	if [ -z $USERNAME ] || [ -z $DOMAINNAME ] || [ -z $PASSWORD ]; then
+              $KWNG_LOG --error --code=2601 --message="Missing arguments"
+              usage
+              exit 2601
+	fi
+
+	STATUS=`check_user_in_etc_passwd $USERNAME`
+	if [ "$STATUS" = "1" ]; then
+              $KWNG_LOG --error --code=2602 --message="$USERNAME allready exist in system"
+              exit 2602
+	fi
+
+	STATUS=`check_main_domain_in_etc_passwd $DOMAINNAME`
+	if [ "$STATUS" = "1" ]; then
+              $KWNG_LOG --error --code=2603 --message="$DOMAINNAME allready exist in system ($USER_PASSWD)"
+              exit 2603
+	fi
+}
+
+function user_update() {
+	if [ ! -z $NEWPASSWORD ]; then
+              PASS=$(perl -e 'print crypt($ARGV[0], "NEWPASSWORD")' $NEWPASSWORD)
+              $USERMOD -p $PASS $USERNAME >/dev/null 2>&1
+              $KWNG_LOG --success --code=2602 --message="$USERNAME update password"
+	fi
+	
+	if [ ! -z $NEWUSERNAME ]; then
+              if [ -f "$USERTMPFILE/$USERNAME" ]; then
+                     rm -rf $USERTMPFILE/$USERNAME
+              fi
+              $USERMOD -s $NO_LOGIN -l $NEWUSERNAME $USERNAME #>/dev/null 2>&1
+              $GROUPMOD -n $NEWUSERNAME $USERNAME #>/dev/null 2>&1
+              $KWNG_LOG --success --code=2604 --message="$USERNAME updated with $NEWUSERNAME"
+	fi
+}
+function user_update_check_flag() {
+	if [ -z $USERNAME ]; then
+              $KWNG_LOG --error --code=2604 --message="Missing arguments"
+              usage
+              exit 2604
+	fi
+
+	STATUS=`check_user_in_etc_passwd $USERNAME`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=2605 --message="$USERNAME not found in $USER_PASSWD"
+              exit 2605
+	fi
+}
+
+function user_remove() {
+	$USERDEL $USERNAME >/dev/null 2>&1 &
+	if [ -f $USERTMPFILE/$USERNAME ]; then
+              rm -rf $USERTMPFILE/$USERNAME
+	fi
+	USERTMPMAIL_DIR="/var/mail"
+	if [ -f $USERTMPMAIL_DIR/$USERNAME ]; then
+              rm -rf $USERTMPMAIL_DIR/$USERNAME
+	fi
+	$KWNG_LOG --success --code=2605 --message="$USERNAME removed"
+	exit 0
+}
+function user_remove_check_flag() {
+	if [ -z $USERNAME ]; then
+              $KWNG_LOG --error --code=2606 --message="Missing arguments"
+              usage
+              exit 2606
+	fi
+
+	STATUS=`check_user_in_etc_passwd $USERNAME`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=2607 --message="$USERNAME not found in $USER_PASSWD"
+              exit 2607
+	fi
+}
+
+function user_suspend() {
+	cat /etc/ftpusers | grep "^$USERNAME" > /dev/null
+	RETVAL=$?
+	if [ "$RETVAL" != "0" ]; then
+		echo $USERNAME >> /etc/ftpusers
+	fi
+	sed -i '/^$/d' /etc/ftpusers
+	$KWNG_LOG --success --code=2606 --message="$USERNAME suspended"
+	exit 0
+}
+function user_suspend_check_flag() {
+	if [ -z $USERNAME ]; then
+              $KWNG_LOG --error --code=2608 --message="Missing arguments"
+              usage
+              exit 2608
+	fi
+
+	STATUS=`check_user_in_etc_passwd $USERNAME`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=2609 --message="$USERNAME not found in $USER_PASSWD"
+              exit 2609
+	fi
+}
+
+function user_unsuspend() {
+	sed -i 's/^'"$USERNAME"'$//g' /etc/ftpusers
+	sed -i '/^$/d' /etc/ftpusers
+	$KWNG_LOG --success --code=2607 --message="$USERNAME unsuspended"
+	exit 0	
+}	
+function user_unsuspend_check_flag() {
+	if [ -z $USERNAME ]; then
+              $KWNG_LOG --error --code=2610 --message="Missing arguments"
+              usage
+              exit 2610
+	fi
+
+	STATUS=`check_user_in_etc_passwd $USERNAME`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=2611 --message="$USERNAME not found in $USER_PASSWD"
+              exit 2611
+	fi
+}
+
+function usage() {
+	echo "Usage: None" >/dev/null
+}
+
+#########################
+##### MAIN FUNCTION #####
+#########################
+
+check_command
+check_root
+check_etc_passwd_file
+
+PROC_MESSAGE=`echo "Process:$0 $@" | sed 's|["'\'']||g'`
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+PROCESS="$1"
+
+case $PROCESS in
+	--create)
+		shift
+		main_case $@
+		user_create_check_flag
+		user_create
+		;;
+	--update)
+		shift
+		main_case $@
+		user_update_check_flag
+		user_update
+		;;
+	--remove)
+		shift
+		main_case $@
+		user_remove_check_flag
+		user_remove
+		;;
+	--suspend)
+		shift
+		main_case $@
+		user_suspend_check_flag
+		user_suspend
+		;;
+	--unsuspend)
+		shift
+		main_case $@
+		user_unsuspend_check_flag
+		user_unsuspend
+		;;
+	*)
+		usage
+		exit 1
+		;;
+esac

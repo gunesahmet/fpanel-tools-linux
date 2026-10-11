@@ -1,0 +1,91 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+
+exec 2>/dev/null
+
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+	
+	if [ -x "$KWNG_ENV" ]
+		then
+			IFS='
+			'
+			export `$KWNG_ENV --debug | grep -v "^#"`
+			IFS=' '
+		else
+			$KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+			exit 1000
+	fi
+	if [ -f $SYSTEM_PACKAGE_CONF ]; then
+		. $SYSTEM_PACKAGE_CONF
+		else
+			$KWNG_LOG --error --code=1002 --message="Unable to load installed system packages. Please contact with system administrator."
+			exit 1002
+	fi
+	
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]
+		then
+			$KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+			exit 1001
+	fi
+
+}
+
+function main_case() {
+	while [ "$1" != "" ]
+	do
+		case $1 in
+			--domain=*)
+				DOMAINNAME=`echo "$1" | sed 's/--domain=//g'`
+			;;
+			--subdomains=*)
+				SUBDOMAINS=`echo "$1" | sed 's/--subdomains=//g'`
+			;;
+			--domain-aliases=*)
+				DOMAINALIASES=`echo "$1" | sed 's/--domain-aliases=//g'`
+			;;
+		esac
+		shift
+	done
+}
+
+function init() {
+	echo ""
+}
+
+function domain_init() {
+	DOMAIN=`echo $DOMAINNAME | awk -F'.' '{print $1}'`
+	TLD=`echo $DOMAINNAME | awk -F'.' '{print $2}'`
+	# DOMAIN_CONFIGS_DIR=`echo $DOMAIN_CONFIGS_DIR | sed 's#\/#\\\/#g'`
+	cp -rP $PANEL_DIR/webalizer/conf/webalizer.fpanel.conf $PANEL_DIR/webalizer/conf/webalizer.$DOMAINNAME.conf
+	sed -i 's#\[DOMAINNAME\]#'"$DOMAINNAME"'#g' $PANEL_DIR/webalizer/conf/webalizer.$DOMAINNAME.conf
+	sed -i 's#\[DOMAIN_LOGS_DIR\]#'"$DOMAIN_LOGS_DIR"'#g' $PANEL_DIR/webalizer/conf/webalizer.$DOMAINNAME.conf
+	
+	$PANEL_DIR/webalizer/bin/webalizer -c $PANEL_DIR/webalizer/conf/webalizer.$DOMAINNAME.conf $DOMAIN_LOGS_DIR/$DOMAINNAME/web/access_log -o $VHOSTS_DIR/$DOMAINNAME/stats/
+	# -year=2015 -month=08
+}
+
+check_command
+check_root
+
+PROCESS="$1"
+
+PROC_MESSAGE=`echo "Process:$0 $@" | sed 's|["'\'']||g'`
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+case $PROCESS in
+	--init)
+		shift
+		main_case $@
+		awstats_init
+		;;
+	--init-domain)
+		shift
+		main_case $@
+		domain_init
+		;;
+esac

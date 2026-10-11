@@ -1,0 +1,230 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+
+exec 2>/dev/null
+
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+	
+	if [ -x "$KWNG_ENV" ]
+		then
+			IFS='
+			'
+			export `$KWNG_ENV --debug | grep -v "^#"`
+			IFS=' '
+		else
+			$KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+			exit 1000
+	fi
+
+	if [ ! -f "$PANEL_CONFIG" ]
+		then
+			$KWNG_LOG --error --code=1002 --message="Fpanel config doesn't exists."
+			exit 1002
+	fi
+	
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]
+		then
+			$KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+			exit 1001
+	fi
+
+}
+
+function main_case() {
+
+	while [ "$1" != "" ]
+	do
+		case $1 in
+			--ipaddr=*)
+				IPADDR=`echo $1 | sed -e 's/--ipaddr=//g'`
+				;;
+			--passwd=*)
+				PASSWD=`echo $1 | sed -e 's/--passwd=//g'`
+				;;
+			--list=*)
+				LIST_CONFIG=`echo $1 | sed -e 's/--list=//g' -e 's/,/ /g'`
+				;;
+			--domain=*)
+				DOMAINNAME=`echo $1 | sed -e 's/--domain=//g' -e 's/,/ /g'`
+				;;				
+			--user=*)
+				USERNAME=`echo $1 | sed -e 's/--user=//g'`
+				;;
+			--old-ipaddr=*)
+				OLD_IPADDR=`echo $1 | sed -e 's/--old-ipaddr=//g' -e 's/,/ /g'`
+				;;
+			--new-ipaddr=*)
+				NEW_IPADDR=`echo $1 | sed -e 's/--new-ipaddr=//g'`
+				;;
+			--mpass=*)
+				FPANEL_ADMIN_MYSQL_PASSWD=`echo $1 | sed -e 's/--mpass=//g'`
+				;;
+			--system=*)
+				SYSTEM=`echo $1 | sed -e 's/--system=//g'`
+				;;
+			--panel=*)
+				PANEL_TYPE=`echo $1 | sed -e 's/--panel=//g'`
+				;;
+			--skip=*)
+				SKIP=`echo $1 | sed -e 's/--skip=//g'`
+				;;
+			--migration-id=*)
+				MIG_ID=`echo $1 | sed -e 's/--migration-id=//g'`
+				;;
+		esac
+		shift
+	done
+
+}
+function usage() {
+	echo "usage" >/dev/null
+}
+
+function send_status_cli() {
+	CONTENT="{\"mig-id\":\"$MIG_ID\",\"progress\":\"$2\",\"error\":\"$3\"}"
+
+	DATA="{\"username\":\"$CLI_USERNAME\",\"password\":\"$CLI_PASSWD\",\"module\":\"migration\",\"action\":\"$1\",\"data\":$CONTENT}"
+	DATA_LEN=`echo $DATA | wc -c`
+	# echo "CLI $1 Response :" >> /tmp/cli.log
+	echo -e "POST /cli HTTP/1.0\r\nHost: 127.0.0.1:8880\r\nContent-Length: $DATA_LEN\r\n\r\n $DATA" | $NETCAT 127.0.0.1 8880 >> /tmp/cli.log
+	# echo -e "POST /cli HTTP/1.0\r\nHost: 127.0.0.1:8880\r\nContent-Length: $DATA_LEN\r\n\r\n $DATA" | $NETCAT 127.0.0.1 8880 > /dev/null
+}
+
+function migration_connect_check_flag() {
+	if [ -z "$PASSWD" ] || [ -z "$IPADDR" ] || [ -z "$SYSTEM" ]
+		then
+			exit
+			$KWNG_LOG --error --code=7401 --message="Missing arguments"
+			exit 7401
+	fi
+
+}
+function migration_connect() {
+	$MIG_CLI "$PASSWD" $MIG_SH $USERNAME@$IPADDR "cat $PANEL_CONFIG;" >/dev/null 2>&1
+	RETVAL=$?
+	# echo $SSH_PASS -p $PASSWD ssh -o StrictHostKeyChecking=no $USERNAME@$IPADDR "cat $PANEL_CONFIG; echo ''" >> /tmp/wrapper.log
+	# echo "Retval: $RETVAL, $RESPONSE"
+	case $RETVAL in
+		0)
+			$KWNG_LOG --success --code=7401 --message="Connection established"
+			exit 0
+			;;
+		5)
+			$KWNG_LOG --error --code=7402 --message="$USERNAME password incorrect"
+			exit 7402
+			;;
+		*)
+			$KWNG_LOG --error --code=7403 --message="Server connection error"
+			exit 7403
+			;;
+	esac
+}
+
+function migration_enable() {
+	# touch /tmp/.migration
+	if [ $SYSTEM = "windows" ]
+		then
+		HTTPD_PATH="c\:/fpanel/httpd/htdocs/.migration"
+		PANEL_CONFIG="c\:/fpanel/etc/fpanel.conf"
+		else
+		HTTPD_PATH="$PANEL_HTTP_DIR/htdocs/.migration"
+		PANEL_CONFIG="$PANEL_DIR/etc/fpanel.conf"
+	fi
+	$MIG_CLI "$PASSWD" $MIG_SH $USERNAME@$IPADDR "touch $HTTPD_PATH" >/dev/null 2>&1
+	RETVAL=$?
+	case $RETVAL in
+		0)			
+			FPANEL_CLI_PASS_USER=`$MIG_CLI "$PASSWD" $MIG_SH $USERNAME@$IPADDR "cat $PANEL_CONFIG"`
+			echo $FPANEL_CLI_PASS_USER;
+			exit 0
+			;;
+		5)
+			$KWNG_LOG --error --code=7404 --message="$USERNAME password incorrect"
+			exit 7404
+			;;
+		*)
+			$KWNG_LOG --error --code=7405 --message="Server connection error"
+			exit 7405
+			;;
+	esac
+}
+
+function migration_start() {
+	MIGRATION_DIR="$PANEL_DIR/migration"
+	if [ ! -d $MIGRATION_DIR ]
+		then
+			mkdir $MIGRATION_DIR
+	fi
+	send_status_cli "start-migration"
+}
+
+function migration_get_domain_check_flag() {
+	if [ -z "$PASSWD" ] || [ -z "$USERNAME" ] || [ -z "$IPADDR" ] || [ -z "$SYSTEM" ] || [ -z "$DOMAINNAME" ] || [ -z "$PANEL_TYPE" ] || [ -z "$MIG_ID" ]
+		then
+			$KWNG_LOG --error --code=7406 --message="Missing arguments"
+			exit 7406
+	fi
+}
+function migration_get_domain() {
+	if [ "$SKIP" != "on" ]
+		then
+		if [ "$PANEL_TYPE" = "fpanel" ]
+			then
+				if [ "$SYSTEM" = "linux" ]
+					then
+						REMOTE_VHOSTS_PATH="/var/www/$DOMAINNAME"
+				fi
+				if [ "$SYSTEM" = "windows" ]
+					then
+						REMOTE_VHOSTS_PATH="c\:/vhosts/$DOMAINNAME"
+				fi
+		fi
+		
+		$MIG_CLI "$PASSWD" $MIG_CP -r $USERNAME@$IPADDR:$REMOTE_VHOSTS_PATH"/httpdoc/*" $VHOSTS_DIR"/$DOMAINNAME/httpdoc/" >/dev/null 2>&1
+		$MIG_CLI "$PASSWD" $MIG_CP -r $USERNAME@$IPADDR:$REMOTE_VHOSTS_PATH"/error-docs/*" $VHOSTS_DIR"/$DOMAINNAME/error-docs/" >/dev/null 2>&1
+		$MIG_CLI "$PASSWD" $MIG_CP -r $USERNAME@$IPADDR:$REMOTE_VHOSTS_PATH"/subdomains/*" $VHOSTS_DIR"/$DOMAINNAME/subdomains/" >/dev/null 2>&1
+		$MIG_CLI "$PASSWD" $MIG_CP -r $USERNAME@$IPADDR:$REMOTE_VHOSTS_PATH"/cgi-bin/*" $VHOSTS_DIR"/$DOMAINNAME/cgi-bin/" >/dev/null 2>&1
+	fi
+	send_status_cli "finish-domain"
+}
+
+
+
+check_command
+check_root
+
+PROC_MESSAGE=`echo "Process:$0 $@" | sed 's|["'\'']||g'`
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+PROCESS="$1"
+
+case $1 in
+	--connect)
+		shift
+		main_case "$@"
+		migration_connect_check_flag
+		migration_connect
+		;;
+	--enable)
+		shift
+		main_case "$@"
+		migration_connect_check_flag
+		migration_enable
+		;;
+	--start)
+		shift
+		main_case "$@"
+		migration_start
+		;;
+	--get-domain)
+		shift
+		main_case "$@"
+		migration_get_domain_check_flag
+		migration_get_domain
+		;;
+esac

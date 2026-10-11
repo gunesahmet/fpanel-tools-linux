@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="5ea0f9f1-057b-47ff-8474-32023f39ac2f" name="Debian Dev 248">
+        <fileTransfer rootFolder="/usr/local/fpanel/core/" accessType="SFTP" host="192.168.139.248" port="22" sshConfigId="2ba24054-0650-41b0-b597-2feb3275367f" sshConfig="Debian Dev 248">
+          <advancedOptions>
+            <advancedOptions controlEncoding="UTF8" dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+      <webServer id="7a07dccf-025a-4b35-ad39-de00f32945be" name="Debian 10 Test">
+        <fileTransfer rootFolder="/usr/local/fpanel/core" accessType="SFTP" host="192.168.139.53" port="22" sshConfigId="01f305e1-2eae-4717-a4ef-44d9484f4822" sshConfig="Debian 10 Test">
+          <advancedOptions>
+            <advancedOptions controlEncoding="UTF8" dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

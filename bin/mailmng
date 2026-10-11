@@ -1,0 +1,748 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler
+
+#exec 2>/dev/null
+
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+
+	if [ -x "$KWNG_ENV" ]; then
+		IFS='
+			'
+		export $($KWNG_ENV --debug | grep -v "^#")
+		IFS=' '
+	else
+		$KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+		exit 1000
+	fi
+
+	if [ ! -f "$PANEL_CONFIG" ]; then
+		$KWNG_LOG --error --code=1002 --message="Fpanel config doesn't exists."
+		exit 1002
+	fi
+
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]; then
+		$KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+		exit 1001
+	fi
+}
+
+function check_domain() {
+	# echo "$SQLITE $MAIL_DB \"select * from domain where domain='$DOMAINNAME';\""
+	STATUS=$($SQLITE $MAIL_DB "select * from domain where domain='$DOMAINNAME';")
+	echo $STATUS
+}
+function check_mail_addr() {
+	# echo "$SQLITE $MAIL_DB \"select * from mailbox where mailaddr='$MAIL_ADDR@$DOMAINNAME';\""
+	STATUS=$($SQLITE $MAIL_DB "select * from mailbox where mailaddr='$MAIL_ADDR@$DOMAINNAME';")
+}
+function check_mail_alias() {
+	# echo "$SQLITE $MAIL_DB \"select * from alias where mailaddr='$MAIL_ALIAS@$DOMAINNAME';\""
+	STATUS=$($SQLITE $MAIL_DB "select * from alias where mailaddr='$MAIL_ALIAS@$DOMAINNAME';")
+}
+function check_mail_forward() {
+	# echo "$SQLITE $MAIL_DB \"select * from alias where mailaddr='$MAIL_FORWARD';\""
+	STATUS=$($SQLITE $MAIL_DB "select * from alias where target='$MAIL_FORWARD';")
+}
+function check_main_domain_directory_in_mail_dir() {
+	if [ ! -d $MAIL_DIR/domains/$1 ]; then
+		echo "0" # Main Domain'e ait dizin yok..
+	else
+		echo "1" # Main Domain'e ait dizin var..
+	fi
+}
+function check_mail_addr_directory_in_mail_dir() {
+	if [ ! -d $MAIL_DIR/domains/$1/$2 ]; then
+		echo "0" # Mail Adresine ait dizin yok..
+	else
+		echo "1" # Mail Adresine ait dizin var..
+	fi
+
+}
+
+function main_case() {
+	INBOX="1"
+	while [ "$1" != "" ]; do
+		case $1 in
+		--domain=*)
+			DOMAINNAME=$(echo $1 | sed 's/--domain=//g' | tr '[A-Z]' '[a-z]')
+			;;
+		--options=*)
+			OPTIONS=$(echo $1 | sed 's/--options=//g')
+			;;
+		--mail-addr=*)
+			MAIL_ADDR=$(echo $1 | sed 's/--mail-addr=//g')
+			;;
+		--forward=*)
+			FORWARD=$(echo $1 | sed 's/--forward=//g')
+			;;
+		--file=*)
+			FILENAME=$(echo $1 | sed 's/--file=//g')
+			;;
+		--no-inbox)
+			INBOX="0"
+			;;
+		--inbox=*)
+			INBOX=$(echo $1 | sed 's/--inbox=//g')
+			;;
+		--passwd=*)
+			PASSWD=$(echo $1 | sed 's/--passwd=//g')
+			;;
+		--quota=*)
+			QUOTA=$(echo $1 | sed 's/--quota=//g')
+			;;
+		--drop=*)
+			DROP=$(echo $1 | sed 's/--drop=//g')
+			;;
+		--new-passwd=*)
+			NEWPASSWD=$(echo $1 | sed 's/--new-passwd=//g')
+			;;
+		--new-quota=*)
+			QUOTA=$(echo $1 | sed 's/--new-quota=//g')
+			;;
+		--mail-alias=*)
+			MAIL_ALIAS=$(echo $1 | sed 's/--mail-alias=//g')
+			;;
+		--mail-forward=*)
+			MAIL_FORWARD=$(echo $1 | sed -e 's/--mail-forward=//g' -e 's/ //g' | tr '[A-Z]' '[a-z]')
+			;;
+		--status=*)
+			MAIL_STATUS=$(echo $1 | sed 's/--status=//g')
+			;;
+		--limit=*)
+			LIMIT=$(echo $1 | sed 's/--limit=//g')
+			;;
+		--time=*)
+			TIME=$(echo $1 | sed 's/--time=//g')
+			;;
+		--id=*)
+			ID=$(echo $1 | sed 's/--id=//g')
+			;;
+		--subject=*)
+			SUBJECT=$(echo $1 | sed 's/--subject=//g')
+			;;
+		--response=*)
+			RESPONSE=$(echo $1 | sed 's/--response=//g')
+			;;
+		--from-time=*)
+			FROM_TIME=$(echo $1 | sed 's/--from-time=//g')
+			;;
+		--to-time=*)
+			TO_TIME=$(echo $1 | sed 's/--to-time=//g')
+			;;
+		esac
+		shift
+	done
+}
+
+function domain_settings() {
+	if [ "$OPTIONS" = "forward" ]; then
+		# echo "| $VDELIVERMAIL '' $MAIL_DIR/domains/$DOMAINNAME/$MAIL_ADDR" > $MAIL_DIR/domains/$DOMAINNAME/.qmail-default
+		# @TODO: Forward kodu yazılacak
+		STATUS=$($SQLITE $MAIL_DB "select * from alias where mailaddr='@$DOMAINNAME';")
+		if [ ! -z "$STATUS" ]; then
+			$KWNG_LOG --error --code=1701 --message="$DOMAINNAME exists"
+			exit 1701
+		fi
+		$SQLITE $MAIL_DB "insert into alias values(NULL,'@$DOMAINNAME','$MAIL_ADDR@$DOMAINNAME','$MAIL_ADDR@$DOMAINNAME','virtual','1');"
+		$KWNG_LOG --success --code=1701 --message="Mail setting (Forwarding) successfull for $DOMAINNAME"
+	fi
+
+	if [ "$OPTIONS" = "reject" ]; then
+		# echo "| $VDELIVERMAIL '' bounce-no-mailbox" > $MAIL_DIR/domains/$DOMAINNAME/.qmail-default
+		$SQLITE $MAIL_DB "delete from alias where mailaddr='@$DOMAINNAME';"
+		$KWNG_LOG --success --code=1702 --message="Mail setting (Reject) successfull for $DOMAINNAME"
+	fi
+	exit 0
+
+}
+function domain_settings_check_flag() {
+
+	if [ -z "$DOMAINNAME" ] || [ -z "$OPTIONS" ]; then
+		$KWNG_LOG --error --code=1701 --message="Missing arguments"
+		exit 1701
+	fi
+
+	case $OPTIONS in
+	forward)
+		if [ -z $MAIL_ADDR ]; then
+			$KWNG_LOG --error --code=1702 --message="Missing mail address"
+			exit 1702
+		fi
+		DOMAINNAME=$(echo $MAIL_ADDR | awk -F'@' '{print $2}')
+		MAIL_ADDR=$(echo $MAIL_ADDR | awk -F'@' '{print $1}')
+		;;
+	reject)
+		OPTIONS="reject"
+		;;
+	*)
+		exit 1702
+		;;
+	esac
+
+	if [ "$OPTIONS" = "forward" ]; then
+		STATUS=$(check_mail_addr_directory_in_mail_dir $DOMAINNAME $MAIL_ADDR)
+		if [ "$STATUS" = "0" ]; then
+			$KWNG_LOG --error --code=1703 --message="$MAIL_ADDR not found in $MAIL_DIR/domains/$1"
+			exit 1703
+		fi
+	fi
+}
+
+function set_domain_limit_settings() {
+	if [ "$MAIL_STATUS" == "on" ]; then
+		CONTENT="id=ratelimit$ID"
+		CONTENT="$CONTENT\n        recipient_domain==$DOMAINNAME"
+		CONTENT="$CONTENT\n        action=rate(recipient_domain/$LIMIT/$TIME/421 4.7.1 - Sorry, exceeded $LIMIT messages in $TIME seconds.)\n"
+		echo -e $CONTENT >> $MAIL_DIR/etc/postfwd.cf
+	else
+	    sed -i '/id=ratelimit"'$TIME'"/,+3d' $MAIL_DIR/etc/postfwd.cf
+	fi
+	$KWNG_LOG --success --code=1702 --message="Mail setting (Limit) successfull for $DOMAINNAME"
+}
+function set_domain_limit_settings_check_flag() {
+	if [ -z "$DOMAINNAME" ]; then
+		$KWNG_LOG --error --code=1701 --message="Missing arguments"
+		exit 1701
+	fi
+
+	if [ -z $LIMIT ] || [ -z $TIME ] || [ -z $ID ]; then
+		$KWNG_LOG --error --code=1702 --message="Missing parameters"
+		exit 1702
+	fi
+
+	STATUS=$(check_domain $DOMAINNAME)
+	if [ "$STATUS" = "0" ]; then
+		$KWNG_LOG --error --code=1703 --message="$DOMAINNAME"
+		exit 1703
+	fi
+}
+
+function mail_addr_autorespond() {
+	AUTORESPONDER_DB="$MAIL_DIR/etc/autoresponder.db"
+
+	# Before delete for new response
+	$SQLITE $AUTORESPONDER_DB "DELETE FROM autoresponse WHERE mailaddr='$MAIL_ADDR@$DOMAINNAME';"
+	UPDATE_SQL_QUERY="update mailbox set "
+	if [ "$MAIL_STATUS" == "on" ]; then
+		UPDATE_SQL_QUERY="$UPDATE_SQL_QUERY autoresponder='1'"
+		RESPONSE=$($FCRYPT -d --in="${RESPONSE}")
+		SUBJECT=$($FCRYPT -d --in="${SUBJECT}")
+		INSERT_QUERY="insert into autoresponse values(NULL,'$RESPONSE','$SUBJECT', NULL, NULL, '$MAIL_ADDR@$DOMAINNAME');"
+		if [ ! -z "$FROM_TIME" ]; then
+			INSERT_QUERY="insert into autoresponse values(NULL,'$RESPONSE','$SUBJECT','$FROM_TIME', NULL', '$MAIL_ADDR@$DOMAINNAME');"
+		fi
+		if [ ! -z "$TO_TIME" ]; then
+			INSERT_QUERY="insert into autoresponse values(NULL,'$RESPONSE','$SUBJECT','$FROM_TIME', '$TO_TIME', '$MAIL_ADDR@$DOMAINNAME');"
+		fi
+		$SQLITE $AUTORESPONDER_DB "$INSERT_QUERY"
+	else
+		UPDATE_SQL_QUERY="$UPDATE_SQL_QUERY autoresponder='0'"
+	fi
+	$SQLITE $MAIL_DB "$UPDATE_SQL_QUERY where mailaddr='$MAIL_ADDR@$DOMAINNAME';"
+	$KWNG_LOG --success --code=1705 --message="$MAIL_ADDR@$DOMAINNAME setting (Autorespond) successfull"
+	exit 0
+}
+function mail_addr_autorespond_check_flag() {
+	if [ -z "$MAIL_ADDR" ] || [ -z "$MAIL_STATUS" ]; then
+		$KWNG_LOG --error --code=1704 --message="Missing arguments"
+		exit 1704
+	fi
+
+	if [ "$MAIL_STATUS" == "on" ]; then
+		if [ -z "$RESPONSE" ] || [ -z "$SUBJECT" ]; then
+			$KWNG_LOG --error --code=1704 --message="Missing arguments"
+			exit 1704
+		fi
+	fi
+
+	if [ ! -z "$FROM_TIME" ]; then
+		if [ -z "$TO_TIME" ]; then
+			$KWNG_LOG --error --code=1705 --message="Missing arguments"
+			exit 1705
+		fi
+	fi
+	DOMAINNAME=$(echo $MAIL_ADDR | awk -F'@' '{print $2}')
+	MAIL_ADDR=$(echo $MAIL_ADDR | awk -F'@' '{print $1}')
+
+	STATUS=$(check_main_domain_directory_in_mail_dir $DOMAINNAME)
+	if [ "$STATUS" = "0" ]; then
+		$KWNG_LOG --error --code=1708 --message="$DOMAINNAME not found in $MAIL_DIR/domains"
+		exit 1708
+	fi
+}
+
+function domain_create() {
+	if [ -z $QUOTA ] || [ "$QUOTA" = "unlimited" ]; then
+		$SQLITE $MAIL_DB "insert into domain values(NULL,'$DOMAINNAME','virtual','','1');"
+	else
+		$SQLITE $MAIL_DB "insert into domain values(NULL,'$DOMAINNAME','virtual','$QUOTA','1');"
+	fi
+
+	$KWNG_LOG --success --code=1706 --message="$DOMAINNAME Mail service created"
+	exit 0
+
+}
+function domain_create_check_flag() {
+	if [ -z $DOMAINNAME ] || [ -z $PASSWD ]; then
+		$KWNG_LOG --error --code=1709 --message="Missing arguments"
+		exit 1709
+	fi
+
+	check_domain >/dev/null
+	if [ ! -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1710 --message="$DOMAINNAME exists"
+		exit 1710
+	fi
+}
+
+function domain_update() {
+	if [ "$QUOTA" = "0" ] || [ "$QUOTA" = "unlimited" ]; then
+		$SQLITE $MAIL_DB "update domain set quota='' where domain='$DOMAINNAME';"
+	else
+		$SQLITE $MAIL_DB "update domain set quota='$QUOTA' where domain='$DOMAINNAME';"
+	fi
+	$KWNG_LOG --success --code=1707 --message="$DOMAINNAME updated"
+	exit 0
+}
+function domain_update_check_flag() {
+
+	if [ -z $DOMAINNAME ]; then
+		$KWNG_LOG --error --code=1718 --message="Missing arguments"
+		exit 1718
+	fi
+
+	check_domain >/dev/null
+	if [ -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1719 --message="$DOMAINNAME not found"
+		exit 1719
+	fi
+}
+
+function domain_remove() {
+	$SQLITE $MAIL_DB "delete from domain where domain='$DOMAINNAME';"
+	if [ -d $MAIL_DIR/domains/$DOMAINNAME ]; then
+		rm -rf $MAIL_DIR/domains/$DOMAINNAME
+	fi
+	$KWNG_LOG --success --code=1708 --message="$DOMAINNAME removed from mail server"
+	exit 0
+}
+function domain_remove_check_flag() {
+	if [ -z "$DOMAINNAME" ]; then
+		$KWNG_LOG --error --code=1715 --message="Missing arguments"
+		exit 1715
+	fi
+}
+
+function domain_suspend() {
+	$SQLITE $MAIL_DB "update domain set status='0' where domain='$DOMAINNAME';"
+	$SQLITE $MAIL_DB "update mailbox set status='0' where domain='$DOMAINNAME';"
+	$KWNG_LOG --success --code=1709 --message="$DOMAINNAME suspended"
+	exit 0
+}
+function domain_suspend_check_flag() {
+	if [ -z "$DOMAINNAME" ]; then
+		$KWNG_LOG --error --code=1716 --message="Missing arguments"
+		exit 1716
+	fi
+	check_domain >/dev/null
+	if [ -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1717 --message="$DOMAINNAME not found"
+		exit 1717
+	fi
+}
+
+function domain_unsuspend() {
+	$SQLITE $MAIL_DB "update domain set status='1' where domain='$DOMAINNAME';"
+	$SQLITE $MAIL_DB "update mailbox set status='1' where domain='$DOMAINNAME';"
+	$KWNG_LOG --success --code=1710 --message="$DOMAINNAME unsuspend"
+	exit 0
+}
+function domain_suspend_check_flag() {
+	if [ -z $DOMAINNAME ]; then
+		$KWNG_LOG --error --code=1720 --message="Missing arguments"
+		exit 1720
+	fi
+	check_domain >/dev/null
+	if [ -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1721 --message="$DOMAINNAME not found"
+		exit 1721
+	fi
+}
+
+function mail_addr_create() {
+	MAILBOX_DIR="$DOMAINNAME/$MAIL_ADDR/Maildir"
+	PASSWD_MD5=$(echo -n $PASSWD | md5sum | awk -F' ' '{print $1}')
+
+	if [ "$QUOTA" = "0" ] || [ -z $QUOTA ] || [ "$QUOTA" = "unlimited" ]; then
+		$SQLITE $MAIL_DB "insert into mailbox values(NULL,'$DOMAINNAME','$MAIL_ADDR@$DOMAINNAME','{MD5}$PASSWD_MD5','$MAILBOX_DIR','','1', '0');"
+	else
+		$SQLITE $MAIL_DB "insert into mailbox values(NULL,'$DOMAINNAME','$MAIL_ADDR@$DOMAINNAME','{MD5}$PASSWD_MD5','$MAILBOX_DIR','$QUOTA','1', '0');"
+	fi
+	$KWNG_LOG --success --code=1711 --message="$MAIL_ADDR created for $DOMAINNAME"
+	exit 0
+}
+function mail_addr_create_check_flag() {
+
+	if [ -z $MAIL_ADDR ] || [ -z $PASSWD ]; then
+		$KWNG_LOG --error --code=1722 --message="Missing arguments"
+		exit 1722
+	fi
+
+	DOMAINNAME=$(echo $MAIL_ADDR | awk -F'@' '{print $2}')
+	MAIL_ADDR=$(echo $MAIL_ADDR | awk -F'@' '{print $1}')
+
+	check_domain >/dev/null
+	if [ -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1723 --message="$DOMAINNAME not found"
+		exit 1723
+	fi
+
+	check_mail_addr >/dev/null
+	if [ ! -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1724 --message="$MAIL_ADDR exists"
+		exit 1724
+	fi
+}
+
+function mail_addr_update() {
+	PASSWD_MD5=$(echo -n $NEWPASSWD | md5sum | awk -F' ' '{print $1}')
+	SQL_QUERY="update mailbox set "
+	if [ ! -z $NEWPASSWD ]; then
+		if [ "$QUOTA" = "0" ] || [ -z $QUOTA ] || [ "$QUOTA" = "unlimited" ]; then
+			SQL_QUERY="$SQL_QUERY password='{MD5}$PASSWD_MD5', quota=''"
+		else
+			SQL_QUERY="$SQL_QUERY password='{MD5}$PASSWD_MD5', quota='$QUOTA'"
+		fi
+	else
+		if [ "$QUOTA" = "0" ] || [ -z $QUOTA ] || [ "$QUOTA" = "unlimited" ]; then
+			SQL_QUERY="$SQL_QUERY quota=''"
+		else
+			SQL_QUERY="$SQL_QUERY quota='$QUOTA'"
+		fi
+	fi
+
+	$SQLITE $MAIL_DB "$SQL_QUERY where mailaddr='$MAIL_ADDR@$DOMAINNAME';"
+
+	$KWNG_LOG --success --code=1712 --message="$MAIL_ADDR updated for $DOMAINNAME"
+	exit 0
+
+}
+function mail_addr_update_check_flag() {
+	if [ -z $MAIL_ADDR ] && [ -z $NEWPASSWD ] && [ -z $QUOTA ]; then
+		$KWNG_LOG --error --code=1725 --message="Missing arguments"
+		exit 1725
+	fi
+	DOMAINNAME=$(echo $MAIL_ADDR | awk -F'@' '{print $2}')
+	MAIL_ADDR=$(echo $MAIL_ADDR | awk -F'@' '{print $1}')
+}
+
+function mail_addr_remove() {
+	MAIL_ADDR_INBOX_DIR="$MAIL_DIR/domains/$DOMAINNAME/$MAIL_ADDR"
+
+	if [ -d $MAIL_ADDR_INBOX_DIR ]; then
+		rm -rf $MAIL_ADDR_INBOX_DIR
+	fi
+
+	$SQLITE $MAIL_DB "delete from mailbox where mailaddr='$MAIL_ADDR@$DOMAINNAME';"
+
+	$KWNG_LOG --success --code=1713 --message="$MAIL_ADDR removed from $DOMAINNAME"
+	exit 0
+}
+function mail_addr_remove_check_flag() {
+	if [ -z $MAIL_ADDR ]; then
+		$KWNG_LOG --error --code=1728 --message="Missing arguments"
+		exit 1728
+	fi
+
+	DOMAINNAME=$(echo $MAIL_ADDR | awk -F'@' '{print $2}')
+	MAIL_ADDR=$(echo $MAIL_ADDR | awk -F'@' '{print $1}')
+
+	check_domain
+	if [ -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1729 --message="$DOMAINNAME not found"
+		exit 1729
+	fi
+
+	check_mail_addr
+	if [ -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1730 --message="$MAIL_ADDR not found"
+		exit 1730
+	fi
+}
+
+function mail_addr_suspend() {
+	$SQLITE $MAIL_DB "update mailbox set status='0' where mailaddr='$MAIL_ADDR@$DOMAINNAME';"
+	$KWNG_LOG --success --code=1714 --message="$MAIL_ADDR@DOMAINNAME suspended"
+	exit 0
+}
+function mail_addr_suspend_check_flag() {
+	if [ -z $MAIL_ADDR ]; then
+		$KWNG_LOG --error --code=1730 --message="Missing arguments"
+		exit 1730
+	fi
+
+	DOMAINNAME=$(echo $MAIL_ADDR | awk -F'@' '{print $2}')
+	MAIL_ADDR=$(echo $MAIL_ADDR | awk -F'@' '{print $1}')
+
+	check_domain >/dev/null
+	if [ -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1731 --message="$DOMAINNAME not found"
+		exit 1731
+	fi
+
+	check_mail_addr
+	if [ -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1732 --message="$MAIL_ADDR@$DOMAINNAME not found"
+		exit 1732
+	fi
+}
+
+function mail_addr_unsuspend() {
+	$SQLITE $MAIL_DB "update mailbox set status='0' where mailaddr='$MAIL_ADDR@$DOMAINNAME';"
+	$KWNG_LOG --success --code=1715 --message="$MAIL_ADDR@DOMAINNAME unsuspended"
+	exit 0
+}
+function mail_addr_unsuspend_check_flag() {
+	if [ -z $MAIL_ADDR ]; then
+		$KWNG_LOG --error --code=1733 --message="Missing arguments"
+		exit 1733
+	fi
+
+	DOMAINNAME=$(echo $MAIL_ADDR | awk -F'@' '{print $2}')
+	MAIL_ADDR=$(echo $MAIL_ADDR | awk -F'@' '{print $1}')
+
+	check_domain >/dev/null
+	if [ -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1734 --message="$DOMAINNAME not found"
+		exit 1734
+	fi
+
+	check_mail_addr
+	if [ -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1735 --message="$MAIL_ADDR@$DOMAINNAME not found"
+		exit 1735
+	fi
+}
+
+function mail_addr_alias_create_check_flag() {
+	if [ -z $MAIL_ADDR ] || [ -z $MAIL_ALIAS ]; then
+		$KWNG_LOG --error --code=1736 --message="Missing arguments"
+		exit 1736
+	fi
+
+	DOMAINNAME=$(echo $MAIL_ADDR | awk -F'@' '{print $2}')
+	MAIL_ADDR=$(echo $MAIL_ADDR | awk -F'@' '{print $1}')
+	MAIL_ALIAS=$(echo $MAIL_ALIAS | awk -F'@' '{print $1}')
+
+	check_domain >/dev/null
+	if [ -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1737 --message="$DOMAINNAME not found"
+		exit 1737
+	fi
+
+	check_mail_addr # >/dev/null
+	if [ -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1738 --message="$MAIL_ADDR@$DOMAINNAME not found"
+		exit 1738
+	fi
+
+	check_mail_alias # >/dev/null
+	if [ ! -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1739 --message="$MAIL_ALIAS@$DOMAINNAME exists"
+		exit 1739
+	fi
+}
+function mail_addr_alias_create() {
+	$SQLITE $MAIL_DB "insert into alias values(NULL,'$DOMAINNAME','$MAIL_ALIAS@$DOMAINNAME','$MAIL_ADDR@$DOMAINNAME','virtual','1');"
+	$KWNG_LOG --success --code=1716 --message="$MAIL_ALIAS added for alias to $MAIL_ADDR"
+	exit 0
+}
+
+function mail_addr_alias_remove_check_flag() {
+	if [ -z $MAIL_ADDR ] || [ -z $MAIL_ALIAS ]; then
+		$KWNG_LOG --error --code=1740 --message="Missing arguments"
+		exit 1740
+	fi
+
+	DOMAINNAME=$(echo $MAIL_ADDR | awk -F'@' '{print $2}')
+	MAIL_ADDR=$(echo $MAIL_ADDR | awk -F'@' '{print $1}')
+	MAIL_ALIAS=$(echo $MAIL_ALIAS | awk -F'@' '{print $1}')
+
+	check_mail_alias >/dev/null
+	if [ -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1741 --message="$MAIL_ALIAS not found"
+		exit 1741
+	fi
+}
+function mail_addr_alias_remove() {
+	$SQLITE $MAIL_DB "delete from alias where mailaddr='$MAIL_ALIAS@$DOMAINNAME';"
+	$KWNG_LOG --success --code=1717 --message="$MAIL_ALIAS added for alias to $MAIL_ADDR"
+	exit 0
+}
+
+# Kontrol edilecek
+function mail_addr_forward_create_check_flag() {
+	if [ -z "$MAIL_ADDR" ] || [ -z "$MAIL_FORWARD" ]; then
+		$KWNG_LOG --error --code=1742 --message="Missing arguments"
+		exit 1742
+	fi
+
+	DOMAINNAME=$(echo $MAIL_ADDR | awk -F'@' '{print $2}')
+	MAIL_ADDR=$(echo $MAIL_ADDR | awk -F'@' '{print $1}')
+
+	check_mail_addr # >/dev/null
+	if [ -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1738 --message="$MAIL_ADDR@$DOMAINNAME not found"
+		exit 1738
+	fi
+
+	check_mail_forward # >/dev/null
+	if [ ! -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1739 --message="$MAIL_FORWARD exists"
+		exit 1739
+	fi
+}
+function mail_addr_forward_create() {
+	$SQLITE $MAIL_DB "insert into alias values(NULL,'$DOMAINNAME','$MAIL_ADDR@$DOMAINNAME','$MAIL_FORWARD','virtual','1');"
+	$KWNG_LOG --success --code=1718 --message="$MAIL_FORWARD added forwarding"
+	exit 0
+}
+
+function mail_addr_forward_remove_check_flag() {
+	if [ -z "$MAIL_ADDR" ] || [ -z "$MAIL_FORWARD" ]; then
+		$KWNG_LOG --error --code=1742 --message="Missing arguments"
+		exit 1742
+	fi
+
+	DOMAINNAME=$(echo $MAIL_ADDR | awk -F'@' '{print $2}')
+	MAIL_ADDR=$(echo $MAIL_ADDR | awk -F'@' '{print $1}')
+
+	check_mail_forward >/dev/null
+	if [ -z "$STATUS" ]; then
+		$KWNG_LOG --error --code=1741 --message="$MAIL_FORWARD not found for forward"
+		exit 1741
+	fi
+
+}
+function mail_addr_forward_remove() {
+	$SQLITE $MAIL_DB "delete from alias where target='$MAIL_FORWARD' and domain='$DOMAINNAME';"
+	$KWNG_LOG --success --code=1719 --message="Forwarding removed from $MAIL_ADDR"
+	exit 0
+}
+
+check_command
+check_root
+
+PROC_MESSAGE=$(echo "Process:$0 $@" | sed 's|["'\'']||g')
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+PROCESS="$1"
+case $PROCESS in
+--create)
+	shift
+	main_case $@
+	domain_create_check_flag
+	domain_create
+	;;
+--update)
+	shift
+	main_case $@
+	domain_update_check_flag
+	domain_update
+	;;
+--remove)
+	shift
+	main_case $@
+	domain_remove_check_flag
+	domain_remove
+	;;
+--create-mail)
+	shift
+	main_case $@
+	mail_addr_create_check_flag
+	mail_addr_create
+	;;
+--update-mail)
+	shift
+	main_case $@
+	mail_addr_update_check_flag
+	mail_addr_update
+	;;
+--remove-mail)
+	shift
+	main_case $@
+	mail_addr_remove_check_flag
+	mail_addr_remove
+	;;
+--domain-settings)
+	shift
+	main_case $@
+	domain_settings_check_flag
+	domain_settings
+	;;
+--set-domain-limit)
+	shift
+	main_case $@
+	set_domain_limit_settings_check_flag
+	set_domain_limit_settings
+	;;
+--create-mail-alias)
+	shift
+	main_case $@
+	mail_addr_alias_create_check_flag
+	mail_addr_alias_create
+	;;
+--remove-mail-alias)
+	shift
+	main_case $@
+	mail_addr_alias_remove_check_flag
+	mail_addr_alias_remove
+	;;
+--create-mail-forward)
+	shift
+	main_case $@
+	mail_addr_forward_create_check_flag
+	mail_addr_forward_create
+	;;
+--remove-mail-forward)
+	shift
+	main_case $@
+	mail_addr_forward_remove_check_flag
+	mail_addr_forward_remove
+	;;
+--autorespond)
+	shift
+	main_case $@
+	mail_addr_autorespond_check_flag
+	mail_addr_autorespond
+	;;
+--suspend)
+	shift
+	main_case $@
+	domain_suspend_check_flag
+	domain_suspend
+	;;
+--unsuspend)
+	shift
+	main_case $@
+	domain_unsuspend_check_flag
+	domain_unsuspend
+	;;
+--suspend-mail)
+	shift
+	main_case $@
+	mail_addr_suspend_check_flag
+	mail_addr_suspend
+	;;
+--unsuspend-mail)
+	shift
+	main_case $@
+	mail_addr_unsuspend_check_flag
+	mail_addr_unsuspend
+	;;
+esac

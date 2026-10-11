@@ -1,0 +1,292 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+
+exec 2>/dev/null
+
+declare -A KEY
+declare -A VALUE
+
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+	
+	if [ -x "$KWNG_ENV" ]
+		then
+			IFS='
+			'
+			export `$KWNG_ENV --debug | grep -v "^#"`
+			IFS=' '
+		else
+			$KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+			exit 1000
+	fi
+	
+	if [ ! -d "$PHP_TEMPLATE_DIR" ]
+	then
+		mkdir -p $PHP_TEMPLATE_DIR
+	fi
+	if [ ! -f "$PHP_TEMPLATE_INI" ]
+		then
+			cp -rP $PHP_INI $PHP_TEMPLATE_INI
+	fi
+
+	KEY[dtz]="date.timezone"
+	KEY[ml]="memory_limit"
+	KEY[met]="max_execution_time"
+	KEY[mit]="max_input_time"
+	KEY[pms]="post_max_size"
+	KEY[umf]="upload_max_filesize"
+	KEY[fu]="file_uploads"
+	KEY[ssp]="session.save_path"
+	KEY[rg]="register_globals"
+	KEY[mqg]="magic_quotes_gpc"
+	KEY[de]="display_errors"
+	KEY[le]="log_errors"
+	KEY[auf]="allow_url_fopen"
+	KEY[sot]="short_open_tag"	
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]
+		then
+			$KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+			exit 1001
+	fi
+
+}
+
+##### Aciklama ####
+# Bu scriptin calismasi icin her domain altindaki conf'ta bulunan httpd.include dosyasina 
+# PHPINIDir $VHOSTS_DIR/$DOMAINNAME/conf
+# Yazilmali. Daha sonra alttaki kisimlar otomatik olarak calismakta.
+# Mantik olarak adminin belirleyecegi kriterler domainlere ozellik tanimalama olarak acilabilir. 
+# Boylece musteriden sunucu yoneticisine 
+# daha az talep gider ve zamandan tasarruf saglanir
+
+function main_case() {
+	while [ "$1" != "" ]
+	do
+		case $1 in
+			--domain=*)
+				DOMAIN=`echo $1 | sed 's/--domain=//g'`
+				;;
+			--dtz=*)
+				VALUE[dtz]=`echo $1 | sed 's/--dtz=//g'`
+				;;
+			--ml=*)
+				VALUE[ml]=`echo $1 | sed 's/--ml=//g'`
+				;;
+			--met=*)
+				VALUE[met]=`echo $1 | sed 's/--met=//g'`
+				;;
+			--mit=*)
+				VALUE[mit]=`echo $1 | sed 's/--mit=//g'`
+				;;
+			--pms=*)
+				VALUE[pms]=`echo $1 | sed 's/--pms=//g'`
+				;;
+			--umf=*)
+				VALUE[umf]=`echo $1 | sed 's/--umf=//g'`
+				;;
+			--fu=*)
+				VALUE[fu]=`echo $1 | sed 's/--fu=//g'`
+				;;
+			--ssp=*)
+				VALUE[ssp]=`echo $1 | sed 's/--ssp=//g'`
+				;;
+			--rg=*)
+				VALUE[rg]=`echo $1 | sed 's/--rg=//g'`
+				;;
+			--mqg=*)
+				VALUE[mqg]=`echo $1 | sed 's/--mqg=//g'`
+				;;
+			# --er=*)
+				# ERROR_REPORTING=`echo $1 | sed 's/--er=/error_reporting /g' |sed 's/#/ /g'`
+				# ;;
+			--de=*)
+				VALUE[de]=`echo $1 | sed 's/--de=//g'`
+				;;
+			--le=*)
+				VALUE[le]=`echo $1 | sed 's/--le=//g'`
+				;;
+			--auf=*)
+				VALUE[auf]=`echo $1 | sed 's/--auf=//g'`
+				;;
+			--sot=*)
+				VALUE[sot]=`echo $1 | sed 's/--sot=//g'`
+				;;
+			--restore=*)
+				RESTORE=`echo $1 | sed 's/--restore=//g'`
+				;;
+		esac
+		shift
+	done
+}
+function usage() {
+	echo "Usage" >/dev/null
+}
+function write_json() {
+	echo "$1" | sed -e 's/,/","/g' -e 's/:/":"/g' -e 's/^/{"/g' -e 's/$/"}/g' -e 's/ //g'
+}
+function php_mng_show() {
+	
+	JSON_DATA=`cat $DOMAIN_CONFIGS_DIR/$DOMAINNAME/php.ini | sed "1d" |  awk '{print $2":"$3}' | tr '\n' ',' | sed -e 's/,$//g' `
+	write_json "$JSON_DATA"
+}
+
+function php_mng_create_data_check_flag() {
+	if [ -z "$DOMAIN" ]
+		then
+			$KWNG_LOG --error --code=4001 --message="Missing arguments"
+			usage
+			exit 4001
+	fi
+}
+function php_mng_create_data(){
+	
+	echo "# FPanel. Dont edit this file." > $DOMAIN_CONFIGS_DIR/$DOMAINNAME/php.ini
+	for index in ${!KEY[*]}
+	do
+		if [ ! -z ${VALUE[$index]} ]
+			then
+				echo "${KEY[$index]}=${VALUE[$index]}" >> $DOMAIN_CONFIGS_DIR/$DOMAINNAME/php.ini
+		fi
+	done
+
+	sed -i '/^$/d' $DOMAIN_CONFIGS_DIR/$DOMAINNAME/php.ini
+	$KWNG_LOG --success --code=4001 --message="Custom PHP config file created for $DOMAIN"
+	$SERVICESMNG --reload --service=web
+	exit 0
+}
+
+function php_mng_create_data_server_check_flag() {
+	if [ -z "$POSTDATA" ]
+		then
+			$KWNG_LOG --error --code=4002 --message="Missing arguments"
+			usage
+			exit 4002
+	fi
+}
+function php_mng_create_data_server() {
+
+	echo "# FPanel. Dont edit this file." > $DOMAIN_CONFIGS_DIR/$DOMAINNAME/php.ini
+	for index in ${!KEY[*]}
+	do
+		if [ ! -z ${VALUE[$index]} ]
+			then
+				# echo "php_value ${KEY[$index]} ${VALUE[$index]}" >> $DOMAIN_CONFIGS_DIR/$DOMAINNAME/php.ini
+				echo "${KEY[$index]}=${VALUE[$index]}" >> $DOMAIN_CONFIGS_DIR/$DOMAINNAME/php.ini
+				echo $PHP_OPTIONS
+		fi
+	done
+
+	sed -i '/^$/d' $DOMAIN_CONFIGS_DIR/$DOMAINNAME/php.ini
+	$KWNG_LOG --success --code=4002 --message="Custom PHP config file removed for $DOMAIN"
+	$SERVICESMNG --reload --service=web
+	exit 0
+}
+
+function php_mng_remove_data_domain(){
+	echo "# XO Panel. Dont edit this file." > $DOMAIN_CONFIGS_DIR/$DOMAINNAME/php.ini
+	$KWNG_LOG --success --code=4003 --message="Custom PHP config file removed for $DOMAIN"
+	$SERVICESMNG --reload --service=web
+	exit 0
+}
+
+function system_php_ini_default() {
+	cp -rP $PHP_TEMPLATE_INI $PHP_INI
+	$KWNG_LOG --success --code=4004 --message="Default PHP.ini restored"
+	$SERVICESMNG --reload --service=web
+	exit 0
+
+}
+
+function system_php_ini_check_flag() {
+
+	if [ "${#VALUE[*]}" = "0" ]
+		then
+			$KWNG_LOG --error --code=4003 --message="Missing arguments"
+			exit 4003
+	fi
+
+
+}
+function system_php_ini() {
+	if [ "$RESTORE" = "on" ]
+		then
+			system_php_ini_default
+			exit 0
+	fi
+	
+	for index in ${!KEY[*]}
+	do
+		if [ ! -z ${VALUE[$index]} ]
+			then
+				# Donusum yapiliyor..
+				NEW_KEY=`echo ${KEY[$index]}`
+				NEW_VALUE=`echo ${VALUE[$index]}`
+				
+				if [ "$NEW_KEY" = "date.timezone" ] || [ "$NEW_KEY" = "session.save_path" ]
+					then
+					NEW_VALUE=`echo $NEW_VALUE | sed 's#\/#\\\/#g'`
+				fi
+				sed -i 's/.*'"$NEW_KEY"' =.*/'"$NEW_KEY"' = '"$NEW_VALUE"'/g' $PHP_INI
+			else
+				# Value bos oldugu icin Key'in onune ; koydugun zaman PHP kendisi otomatik olarak varsayilan degeri cakacak.
+				sed -i 's/.*'"${KEY[$index]}"' =.*/; '"${KEY[$index]}"' =/g' $PHP_INI
+		fi
+	done
+
+	$KWNG_LOG --success --code=4005 --message="Custom PHP config file removed from $DOMAIN"
+	
+	$SERVICESMNG --reload --service=web
+	exit 0
+}
+
+######################
+###### MAIN FUNC #####
+######################
+check_command
+check_root
+PROCESS="$1"
+
+PROC_MESSAGE=`echo "Process:$0 $@" | sed 's|["'\'']||g'`
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+case $PROCESS in
+	--create)
+		shift
+		main_case "$@"
+		php_mng_create_data_check_flag
+		php_mng_create_data
+		;;
+	--remove)
+		shift
+		main_case "$@"
+		php_mng_create_data_check_flag
+		php_mng_remove_data_domain
+		;;
+	--show)
+		shift
+		main_case "$@"
+		php_mng_show
+		;;
+	--set-system)
+		shift
+		main_case "$@"
+		system_php_ini_check_flag
+		system_php_ini
+		;;
+	# --create-server)
+		# shift
+		# main_case "$@"
+		# php_mng_create_data_server_check_flag
+		# php_mng_create_data_server
+		# ;;
+	# --set-apache-server)
+		# shift
+		# main_case "$@"
+		# apache_module_manager_check_flag
+		# apache_module_manager
+		# ;;
+esac

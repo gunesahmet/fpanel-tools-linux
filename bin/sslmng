@@ -1,0 +1,579 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler
+
+exec 2>/dev/null
+
+DEFAULT_HTTPD_CONF="var.server_root             = \"/usr/local/fpanel/httpd/htdocs\"
+var.log_root                = \"/usr/local/fpanel/httpd/var/logs\"
+var.state_dir               = \"/usr/local/fpanel/httpd/var/run\"
+var.home_dir                = \"/usr/local/fpanel/httpd\"
+var.conf_dir                = \"/usr/local/fpanel/httpd/etc/\"
+var.cache_dir               = \"/usr/local/fpanel/httpd/var/cache\"
+var.socket_dir              = home_dir + \"/sockets\"
+compress.cache-dir          = \"/usr/local/fpanel/httpd/var/cache\"
+compress.filetype           = (\"application/x-javascript\", \"application/javascript\", \"text/javascript\", \"text/x-js\", \"text/css\", \"text/html\", \"text/plain\")
+
+include                     \"modules.conf\"
+include                     \"mime.conf\"
+
+server.port                 = 8880
+
+server.use-ipv6             = \"disable\"
+server.username             = \"fpanel\"
+server.groupname            = \"fpanel\"
+server.document-root        = server_root
+
+server.pid-file             = state_dir + \"/httpd.pid\"
+
+server.errorlog             = log_root + \"/error.log\"
+
+server.max-fds              = 2048
+server.stat-cache-engine    = \"simple\"
+server.max-connections      = 1024
+
+index-file.names            += ( \"index.html\", \"index.php\" )
+
+server.follow-symlink       = \"enable\"
+
+server.upload-dirs          = ( home_dir + \"/var/tmp\" )
+
+server.modules              += ( \"mod_fastcgi\", \"mod_rewrite\" )
+
+fastcgi.server              = ( \".php\" => ((
+       \"bin-path\" => home_dir + \"/php/bin/php-cgi\",
+       \"socket\" => home_dir + \"/var/tmp/php.socket\",
+       \"max-procs\" => 4,
+       \"min-procs\" => 2,
+       \"idle-timeout\" => 10,
+       \"bin-environment\" => (
+                     \"PHP_FCGI_CHILDREN\" => \"4\",
+                     \"PHP_FCGI_MAX_REQUESTS\" => \"512\"
+       )
+)))
+
+url.rewrite = (
+       \"^/(templates)/(.*)\" => \"/\$0/\$1\",
+       \"^/favicon.ico\" => \"/\$0/\$1\",
+       \"^/(.*)\" => \"/index.php?_url=/\$1\"
+)
+
+\$SERVER[\"socket\"] == \":8880\" {
+       ssl.engine                  = \"disable\"
+       server.document-root        = home_dir + \"/htdocs\"
+}"
+SSL_CONF="\$SERVER[\"socket\"] == \":8443\" {
+       ssl.engine                  = \"enable\"
+       ssl.pemfile                 = home_dir + \"/etc/server.pem\"
+       ssl.ca-file                 = home_dir + \"/etc/ca.crt\"
+       server.document-root        = home_dir + \"/htdocs\"
+}"
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+
+	if [ -x "$KWNG_ENV" ]; then
+		IFS='
+			'
+		export $($KWNG_ENV --debug | grep -v "^#")
+		IFS=' '
+	else
+		$KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+		# shellcheck disable=SC2242
+		exit 1000
+	fi
+
+	if [ ! -f "$PANEL_CONFIG" ]; then
+		$KWNG_LOG --error --code=1002 --message="Fpanel config doesn't exists."
+		# shellcheck disable=SC2242
+		exit 1002
+	fi
+
+	if [ -f $SYSTEM_PACKAGE_CONF ]; then
+		. $SYSTEM_PACKAGE_CONF
+	else
+		$KWNG_LOG --error --code=1002 --message="Unable to load installed system packages. Please contact with system administrator."
+		exit 1002
+	fi
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]; then
+		$KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+		# shellcheck disable=SC2242
+		exit 1001
+	fi
+
+}
+
+function check_etc_passwd_file() {
+
+	if [ ! -s $USER_PASSWD ]; then
+		$KWNG_LOG --error --code=1002 --message="$USER_PASSWD doesn't exist"
+		# shellcheck disable=SC2242
+		exit 1002
+	fi
+
+}
+function check_main_domain_etc_passwd() {
+	STATUS=$(grep "$VHOSTS_DIR/$1:" "$USER_PASSWD")
+	if [ "X$STATUS" = "X" ]; then
+		echo "0" # Main Domain sistemde yok !!
+	else
+		echo "1" # Main Domain sistemde var !!
+	fi
+
+}
+function create_ssl_apache_httpd_include_conf() {
+	echo $DOMAIN_CONFIGS_DIR
+	# Default Configuration
+	echo "# DONT EDIT THIS FILE..
+<IfModule mod_ssl.c>
+<VirtualHost $IPADDR:443>
+	ServerName   $DOMAINNAME:443
+	ServerAlias  www.$DOMAINNAME
+	Include $DOMAIN_CONFIGS_DIR/$DOMAINNAME/domainalias.include
+	UseCanonicalName Off
+	ServerAdmin  \"admin@$DOMAINNAME\"
+	DocumentRoot $VHOSTS_DIR/$DOMAINNAME/vhost/httpdoc
+	RMode config
+	RUidGid $USERNAME $NOGROUP
+	RGroups $NOGROUP
+	
+	<IfModule logio_module>
+		LogFormat \"%h %l %u %t \\\"%r\\\" %>s %O \\\"%{Referer}i\\\" \\\"%{User-Agent}i\\\"\" combinedio
+	</IfModule>
+
+	CustomLog  $DOMAIN_LOGS_DIR/$DOMAINNAME/web/access.log combinedio
+	ErrorLog  $DOMAIN_LOGS_DIR/$DOMAINNAME/web/error.log" >$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+
+	# CGI Support
+	if [ "$CGISUPPORT" = "on" ]; then
+		echo "
+	ScriptAlias  /cgi-bin/ $VHOSTS_DIR/$DOMAINNAME/cgi-bin/" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+	fi
+
+	echo "
+	SSLEngine on
+	SSLCertificateFile $DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/$SSLNAME.crt
+	SSLCertificateKeyFile $DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/$SSLNAME.key" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+	if [ -f $DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME"_CA.crt ]; then
+		echo "
+	SSLCertificateChainFile  $DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/$SSLCACERT" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+	fi
+	# Default Configuration Devam
+	echo "
+	<Directory $VHOSTS_DIR/$DOMAINNAME/vhost/httpdoc>" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+
+	# Perl Support
+	if [ "$PERLSUPPORT" = "on" ]; then
+		echo "
+		<IfModule mod_perl.c>
+			<Files ~ (\.pl$)>
+				SetHandler perl-script
+				PerlHandler ModPerl::Registry
+				Options ExecCGI
+				allow from all
+				PerlSendHeader On
+			</Files>
+		</IfModule>" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+	fi
+
+	# PHP Support
+	if [ "$PHPSUPPORT" = "on" ]; then
+		echo "
+		<IfModule mod_php5.c>
+			php_admin_flag engine on
+			php_admin_value open_basedir \"$VHOSTS_DIR/$DOMAINNAME/vhost/httpdoc:/tmp\"
+		</IfModule>" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+	else
+		echo "
+		<IfModule mod_php4.c>
+			php_admin_flag engine off
+		</IfModule>
+		<IfModule mod_php5.c>
+			php_admin_flag engine off
+		</IfModule>" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+	fi
+	# Python Support
+	if [ "$PYTHONSUPPORT" = "on" ]; then
+		echo "
+		<IfModule mod_python.c>
+			<Files ~ (\.py$)>
+				SetHandler python-program
+				PythonHandler   mod_python.cgihandler
+			</Files>
+		</IfModule>" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+	else
+		echo "" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+	fi
+
+	# Default Configuration
+	echo "
+		Options -Indexes -Includes +ExecCGI
+	</Directory>
+</VirtualHost>
+
+</IfModule>
+" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+
+	$SERVICESMNG --restart --service=web
+}
+function create_ssl_nginx_httpd_include_conf() {
+	echo "server {
+	listen   $IPADDR:443;
+	root $VHOSTS_DIR/$DOMAINNAME/vhost/httpdoc;
+	index index.php index.html index.htm;
+
+	access_log  $DOMAIN_LOGS_DIR/$DOMAINNAME/web/access.log combined_json;
+	error_log  $DOMAIN_LOGS_DIR/$DOMAINNAME/web/error.log;
+
+	server_name $DOMAINNAME www.$DOMAINNAME;
+	include $DOMAIN_CONFIGS_DIR/$DOMAINNAME/domainalias.include;
+
+       include $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/*.include;
+
+	" >$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+
+	echo -e "\tssl on;" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+
+	if [ -f $DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME"_CA.crt ]; then
+		echo -e "\tssl_certificate $DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/$SSLCACERT;" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+	else
+		echo -e "\tssl_certificate $DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/$SSLNAME.crt;" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+	fi
+	echo -e "\tssl_certificate_key $DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/$SSLNAME.key;" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+	echo -e "\n\tlocation / {" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+	echo "		root $VHOSTS_DIR/$DOMAINNAME/vhost/httpdoc/;
+		index  index.php index.html index.htm;
+	" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+	if [ "$PHPSUPPORT" = "on" ]; then
+		echo "
+		location ~ \.php$ {
+			fastcgi_pass unix:$PHP_FPM_RUN_DIR/$DOMAINNAME.sock;
+			fastcgi_index index.php;
+			include fastcgi_params;
+			fastcgi_param  SCRIPT_FILENAME  \$document_root\$fastcgi_script_name;
+			fastcgi_param  QUERY_STRING     \$query_string;
+			fastcgi_param  REQUEST_METHOD   \$request_method;
+			fastcgi_param  CONTENT_TYPE     \$content_type;
+			fastcgi_param  CONTENT_LENGTH   \$content_length;
+			fastcgi_intercept_errors        on;
+			fastcgi_ignore_client_abort     off;
+			fastcgi_connect_timeout 60;
+			fastcgi_send_timeout 180;
+			fastcgi_read_timeout 180;
+			fastcgi_buffer_size 128k;
+			fastcgi_buffers 4 256k;
+			fastcgi_busy_buffers_size 256k;
+			fastcgi_temp_file_write_size 256k;
+		}" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+	fi
+
+	echo "
+	}
+}" >>$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+
+}
+function create_ssl_httpd_include_conf() {
+	[[ "$HTTPD_SERVER" = "apache" ]] && create_ssl_apache_httpd_include_conf
+	[[ "$HTTPD_SERVER" = "nginx" ]] && create_ssl_nginx_httpd_include_conf
+}
+
+function create_ssl_csr_key() {
+	# openssl req -nodes -newkey rsa:$CRYPTORANGE -keyout ${CSRKEYTMP}.key -out ${CSRKEYTMP}.csr
+	if [ "$WWW" = "off" ]; then
+		openssl req -nodes -newkey rsa:$CRYPTORANGE -keyout $PANEL_TMP_DIR/$SSLNAME.key -out $PANEL_TMP_DIR/$SSLNAME.csr -subj "/C=$COUNTRY/ST=$STATE/L=$CITY/O=$COMPANYNAME/OU=$DEPARTMENT/CN=$DOMAINNAME" # >/dev/null 2>&1
+	else
+		openssl req -nodes -newkey rsa:$CRYPTORANGE -keyout $PANEL_TMP_DIR/$SSLNAME.key -out $PANEL_TMP_DIR/$SSLNAME.csr -subj "/C=$COUNTRY/ST=$STATE/L=$CITY/O=$COMPANYNAME/OU=$DEPARTMENT/CN=www.$DOMAINNAME" #>/dev/null 2>&1
+	fi
+
+	echo "BEGIN CERT KEY"
+	cat $PANEL_TMP_DIR/$SSLNAME.key
+	echo "END CERT KEY"
+	echo "BEGIN CERT CSR"
+	cat $PANEL_TMP_DIR/$SSLNAME.csr
+	echo "END CERT CSR"
+
+	if [ -f $PANEL_TMP_DIR/$SSLNAME.key ]; then
+		rm -rf $PANEL_TMP_DIR/$SSLNAME.key
+	fi
+	$KWNG_LOG --success --code=1901 --message="$SSLNAME is created"
+	exit 0
+}
+function create_ssl_csr_key_check_flag() {
+	if [ -z "$DOMAINNAME" ] || [ -z "$COUNTRY" ] || [ -z "$STATE" ] || [ -z "$CITY" ] || [ -z "$COMPANYNAME" ] || [ -z "$DEPARTMENT" ] || [ -z "$CRYPTORANGE" ]; then
+		# echo "Domain:" $DOMAINNAME
+		# echo "Country:" $COUNTRY
+		# echo "State:" $STATE
+		# echo "City:" $CITY
+		# echo "Company:" $COMPANYNAME
+		# echo "DEPARTMENT:" $DEPARTMENT
+		# echo "Crypto:" $CRYPTORANGE
+		exit 3300
+	fi
+
+	STATUS=$(check_main_domain_etc_passwd $DOMAINNAME)
+	if [ "$STATUS" = "0" ]; then
+		$KWNG_LOG --error --code=1901 --message="$DOMAINNAME not found in $USER_PASSWD"
+		exit 1901
+	fi
+
+}
+
+function install_ssl() {
+	if [ ! -d $SSLPATH ]; then
+		mkdir -p $SSLPATH
+	fi
+
+	PK_DECODED_CONTENT=$($FCRYPT -d --in="${PRIVATE_KEY}")
+	echo $PK_DECODED_CONTENT >$SSLPATH/$SSLNAME.key
+
+	CRT_DECODED_CONTENT=$($FCRYPT -d --in="${CRT}")
+	echo $CRT_DECODED_CONTENT >>$SSLPATH/$SSLNAME.crt
+
+	CA_DECODED_CONTENT=$($FCRYPT -d --in="${CA_BUNDLE}")
+	echo $CA_DECODED_CONTENT >$SSLPATH/"${SSLNAME}_CA".crt
+
+	CERTMD5=$(openssl x509 -noout -modulus -in $SSLPATH/$SSLNAME.crt | openssl md5)
+	KEYMD5=$(openssl rsa -noout -modulus -in $SSLPATH/$SSLNAME.key | openssl md5)
+
+	if [ "$CERTMD5" != "$KEYMD5" ]; then
+		$KWNG_LOG --error --code=1906 --message="$SSLNAME is not valid"
+		exit 1906
+	fi
+
+	VERIFIYCA=$(openssl x509 -in $SSLPATH/"${SSLNAME}_CA".crt -text -noout | grep "CN.*=.*$DOMAINNAME")
+	if [ -z $VERIFIYCA ]; then
+		$KWNG_LOG --error --code=1907 --message="$SSLNAME CA is not validated"
+		exit 1907
+	fi
+
+	$KWNG_LOG --success --code=1902 --message="$SSLNAME is installed"
+	exit 0
+}
+function install_ssl_check_flag() {
+	if [ -z "$SSLNAME" ] || [ -z "$DOMAINNAME" ] || [ -z "${PRIVATE_KEY}" ] || [ -z "${CRT}" ] || [ -z "${CA_BUNDLE}" ]; then
+		$KWNG_LOG --error --code=1902 --message="Missing arguments"
+		exit 1902
+	fi
+	SSLPATH="$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl"
+
+	STATUS=$(check_main_domain_etc_passwd $DOMAINNAME)
+	if [ "$STATUS" = "0" ]; then
+		$KWNG_LOG --error --code=1903 --message="$DOMAINNAME not found in $USER_PASSWD"
+		exit 1903
+	fi
+}
+
+function remove_ssl() {
+	rm -rf $SSLPATH/$SSLNAME.csr \
+		$SSLPATH/$SSLNAME.key \
+		$SSLPATH/$SSLNAME.crt \
+		$SSLPATH/"$SSLNAME"_CA.crt
+	rm -rf $DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/"$SSLNAME".httpd_ssl.include
+	$KWNG_LOG --success --code=1903 --message="$SSLNAME is removed"
+	exit 0
+}
+function remove_ssl_check_flag() {
+	if [ -z "$SSLNAME" ] || [ -z "$DOMAINNAME" ]; then
+		$KWNG_LOG --error --code=1908 --message="Missing arguments"
+		exit 1908
+	fi
+	SSLPATH="$DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl"
+
+	if [ ! -f $SSLPATH/$SSLNAME.crt ] || [ ! -f $SSLPATH/$SSLNAME.key ]; then
+		$KWNG_LOG --error --code=1909 --message="$DOMAINNAME_$SSLNAME doesnt exist"
+		exit 1909
+	fi
+
+}
+
+function install_ssl_webserver() {
+	SSLCACERT=$SSLNAME"_CA.crt"
+	# echo "SSL CA Cert: " $SSLCACERT >> /tmp/wrapper.log
+	create_ssl_httpd_include_conf
+	[[ "$HTTPD_SERVER" = "nginx" ]] && $SERVICESMNG --restart --service=php_fpm
+	$SERVICESMNG --restart --service=web
+	$KWNG_LOG --success --code=1904 --message="$SSLNAME is installed on apache"
+	exit 0
+}
+function install_ssl_webserver_check_flag() {
+	if [ -z "$DOMAINNAME" ] || [ -z "$IPADDR" ] || [ -z "$USERNAME" ] || [ -z "$SSLNAME" ]; then
+		$KWNG_LOG --error --code=1910 --message="Missing arguments"
+		exit 1910
+	fi
+}
+
+function remove_ssl_webserver() {
+	rm -rf $DOMAIN_CONFIGS_DIR/$DOMAINNAME/ssl/*
+
+	[[ "$HTTPD_SERVER" = "nginx" ]] && $SERVICESMNG --restart --service=php_fpm
+	$SERVICESMNG --restart --service=web
+	$KWNG_LOG --success --code=1905 --message="$SSLNAME is removed from $DOMAINNAME"
+	exit 0
+}
+function remove_ssl_webserver_check_flag() {
+	if [ -z "$DOMAINNAME" ]; then
+		$KWNG_LOG --error --code=1911 --message="Missing arguments"
+		exit 1911
+	fi
+}
+
+function install_system_ssl_check_flag() {
+	if [ -z "$CRT" ] || [ -z "$CA_BUNDLE" ] || [ -z "$PRIVATE_KEY" ]; then
+		$KWNG_LOG --error --code=1911 --message="Missing arguments"
+		exit 1911
+	fi
+}
+function install_system_ssl() {
+	CRT_DECODED_CONTENT=$($FCRYPT -d --in="${CRT}")
+	PK_DECODED_CONTENT=$($FCRYPT -d --in="${PRIVATE_KEY}")
+
+	echo $PK_DECODED_CONTENT >$PANEL_HTTP_DIR/etc/server.pem
+	echo $CRT_DECODED_CONTENT >>$PANEL_HTTP_DIR/etc/server.pem
+
+	CA_DECODED_CONTENT=$($FCRYPT -d --in="${CA_BUNDLE}")
+	echo $CA_DECODED_CONTENT >$PANEL_HTTP_DIR/etc/ca.crt
+	echo $DEFAULT_HTTPD_CONF >$PANEL_HTTP_DIR/etc/httpd.conf
+	echo $SSL_CONF >>$PANEL_HTTP_DIR/etc/httpd.conf
+	systemctl restart panel-httpd
+}
+
+function deactivate_system_ssl() {
+	echo $DEFAULT_HTTPD_CONF >$PANEL_HTTP_DIR/etc/httpd.conf
+}
+
+function letsencrypt() {
+	if [ ! -z "$DOMAINNAME" ]; then
+		$$PANEL_CORE_DIR/sbin/fp-lego --pem --pfx --domain=*.$DOMAINNAME --email=admin@$DOMAINNAME --dns=default run
+	fi
+}
+
+function main_case() {
+	while [ "$1" != "" ]; do
+		case $1 in
+		--country=*)
+			COUNTRY=$(echo "$1" | sed 's/--country=//g' | tr '[a-z]' '[A-Z]')
+			;;
+		--state=*)
+			STATE=$(echo "$1" | sed 's/--state=//g')
+			;;
+		--city=*)
+			CITY=$(echo "$1" | sed 's/--city=//g')
+			;;
+		--companyname=*)
+			COMPANYNAME=$(echo "$1" | sed 's/--companyname=//g')
+			;;
+		--department=*)
+			DEPARTMENT=$(echo "$1" | sed 's/--department=//g')
+			;;
+		--email=*)
+			EMAIL=$(echo "$1" | sed 's/--email=//g')
+			;;
+		--www=*)
+			WWW=$(echo "$1" | sed 's/--www=//g')
+			;;
+		--domain=*)
+			DOMAINNAME=$(echo "$1" | sed 's/--domain=//g')
+			;;
+		--crypto=*)
+			CRYPTORANGE=$(echo "$1" | sed 's/--crypto=//g')
+			;;
+		--ssl-name=*)
+			SSLNAME=$(echo "$1" | sed 's/--ssl-name=//g')
+			;;
+		--user=*)
+			USERNAME=$(echo $1 | sed 's/--user=//g' | tr '[A-Z]' '[a-z]')
+			;;
+		--ipaddr=*)
+			IPADDR=$(echo $1 | sed 's/--ipaddr=//g' | tr '[A-Z]' '[a-z]')
+			;;
+		--php=*)
+			PHPSUPPORT=$(echo $1 | sed 's/--php=//g' | tr '[A-Z]' '[a-z]')
+			;;
+		--cgi=*)
+			CGISUPPORT=$(echo $1 | sed 's/--cgi=//g' | tr '[A-Z]' '[a-z]')
+			;;
+		--perl=*)
+			PERLSUPPORT=$(echo $1 | sed 's/--perl=//g' | tr '[A-Z]' '[a-z]')
+			;;
+		--python=*)
+			PYTHONSUPPORT=$(echo $1 | sed 's/--python=//g' | tr '[A-Z]' '[a-z]')
+			;;
+		--bw-quota=*)
+			QUOTA=$(echo $1 | sed 's/--bw-quota=//g' | tr '[A-Z]' '[a-z]')
+			;;
+		--crt=*)
+			CRT=$(echo $1 | sed 's/--crt=//g')
+			;;
+		--bundle=*)
+			CA_BUNDLE=$(echo $1 | sed 's/--bundle=//g')
+			;;
+		--private-key=*)
+			PRIVATE_KEY=$(echo $1 | sed 's/--private-key=//g')
+			;;
+		esac
+		shift
+	done
+}
+
+#########################
+##### Main Function #####
+#########################
+check_command
+check_root
+check_etc_passwd_file
+
+PROC_MESSAGE=$(echo "Process:$0 $@" | sed 's|["'\'']||g')
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+PROCESS="$1"
+
+case $PROCESS in
+--create-csr-key)
+	shift
+	main_case "$@"
+	create_ssl_csr_key_check_flag
+	create_ssl_csr_key
+	;;
+--install-ssl)
+	shift
+	main_case "$@"
+	install_ssl_check_flag
+	install_ssl
+	;;
+--remove-ssl)
+	shift
+	main_case "$@"
+	remove_ssl_check_flag
+	remove_ssl
+	;;
+--install-ssl-webserver)
+	shift
+	main_case "$@"
+	install_ssl_webserver_check_flag
+	install_ssl_webserver
+	;;
+--remove-ssl-webserver)
+	shift
+	main_case "$@"
+	remove_ssl_webserver
+	remove_ssl_webserver_check_flag
+	;;
+--system-ssl)
+	shift
+	main_case "$@"
+	install_system_ssl_check_flag
+	install_system_ssl
+	;;
+--deactivate-system-ssl)
+	shift
+	main_case "$@"
+	deactivate_system_ssl
+	;;
+--letsencrypt)
+	shift
+	main_case "$@"
+	letsencrypt
+	;;
+esac

@@ -1,0 +1,368 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+
+exec 2>/dev/null
+
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+	
+	if [ -x "$KWNG_ENV" ]
+		then
+			IFS='
+			'
+			export `$KWNG_ENV --debug | grep -v "^#"`
+			IFS=' '
+		else
+			$KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+			exit 1000
+	fi
+	if [ -f $SYSTEM_PACKAGE_CONF ]; then
+		. $SYSTEM_PACKAGE_CONF
+		else
+			$KWNG_LOG --error --code=1002 --message="Unable to load installed system packages. Please contact with system administrator."
+			exit 1002
+	fi
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]
+		then
+			$KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+			exit 1001
+	fi
+
+}
+
+function main_case() {
+	while [ "$1" != "" ]
+	do
+		case $1 in
+			--domain=*)
+				DOMAINNAME=`echo $1 | sed -e 's/--domain=//g'`
+				;;
+		esac
+		shift
+	done
+}
+
+function default_conf() {
+DOMAIN_DIRECTORY="$VHOSTS_DIR/$DOMAINNAME"
+CURRENT_DATE=`date +'%Y-%m-%d'`
+OUTFILE="$VHOSTS_DIR/$DOMAINNAME/stats/web-stats/report-$CURRENT_DATE.xml"
+echo "LOGFILE $VHOSTS_DIR/$DOMAINNAME/stats/logs/access_log* http://www.$DOMAINNAME
+SUBDIR http://*/*
+HOSTNAME \"$DOMAINNAME\"
+HOSTURL none
+OUTFILE $OUTFILE
+OUTPUT XML
+IMAGEDIR images/
+PNGIMAGES OFF
+STYLESHEET none
+CSSPREFIX none
+DIRSUFFIX index.html
+CACHEFILE none
+CACHEOUTFILE none
+TYPEALIAS .html    \".html [Hypertext Markup Language]\"
+TYPEALIAS .htm     \".htm  [Hypertext Markup Language]\"
+TYPEALIAS .shtml   \".shtml [Server-parsed HTML]\"
+TYPEALIAS .ps      \".ps   [PostScript]\"
+TYPEALIAS .gz      \".gz   [Gzip compressed files]\"
+TYPEALIAS .tar.gz  \".tar.gz [Compressed archives]\"
+TYPEALIAS .jpg     \".jpg  [JPEG graphics]\"
+TYPEALIAS .jpeg    \".jpeg [JPEG graphics]\"
+TYPEALIAS .gif     \".gif  [GIF graphics]\"
+TYPEALIAS .png     \".png  [PNG graphics]\"
+TYPEALIAS .txt     \".txt  [Plain text]\"
+TYPEALIAS .cgi     \".cgi  [CGI scripts]\"
+TYPEALIAS .pl      \".pl   [Perl scripts]\"
+TYPEALIAS .css     \".css  [Cascading Style Sheets]\"
+TYPEALIAS .class   \".class [Java class files]\"
+TYPEALIAS .pdf     \".pdf  [Adobe Portable Document Format]\"
+TYPEALIAS .zip     \".zip  [Zip archives]\"
+TYPEALIAS .hqx     \".hqx  [Macintosh BinHex files]\"
+TYPEALIAS .exe     \".exe  [Executables]\"
+TYPEALIAS .wav     \".wav  [WAV sound files]\"
+TYPEALIAS .avi     \".avi  [AVI movies]\"
+TYPEALIAS .arc     \".arc  [Compressed archives]\"
+TYPEALIAS .mid     \".mid  [MIDI sound files]\"
+TYPEALIAS .mp3     \".mp3  [MP3 sound files]\"
+TYPEALIAS .doc     \".doc  [Microsoft Word document]\"
+TYPEALIAS .rtf     \".rtf  [Rich Text Format]\"
+TYPEALIAS .mov     \".mov  [Quick Time movie]\"
+TYPEALIAS .mpg     \".mpg  [MPEG movie]\"
+TYPEALIAS .mpeg    \".mpeg [MPEG movie]\"
+TYPEALIAS .asp     \".asp  [Active Server Pages]\"
+TYPEALIAS .jsp     \".jsp  [Java Server Pages]\"
+TYPEALIAS .cfm     \".cfm  [Cold Fusion]\"
+TYPEALIAS .php     \".php  [PHP]\"
+TYPEALIAS .js      \".js   [JavaScript code]\"
+304ISSUCCESS ON
+ROBOTINCLUDE REGEXPI:robot
+ROBOTINCLUDE REGEXPI:spider
+ROBOTINCLUDE REGEXPI:crawler
+ROBOTINCLUDE Googlebot*
+ROBOTINCLUDE msnbot*
+ROBOTINCLUDE Infoseek*
+ROBOTINCLUDE Scooter*
+ROBOTINCLUDE *Slurp*
+ROBOTINCLUDE *Validator*
+ROBOTINCLUDE Ultraseek*
+ROBOTINCLUDE Baidu*
+GENERAL ON
+HOST ON
+MONTHLY ON
+DAILYREP ON
+FILETYPE ON
+REQUEST ON 
+REDIR ON
+FAILURE ON
+PROCTIME ON
+REDIRHOST ON
+FAILHOST ON
+REFERRER ON
+REFSITE ON
+REDIRREF ON
+FAILREF ON
+VHOST ON
+REDIRVHOST ON
+FAILVHOST ON
+SEARCHQUERY ON
+SEARCHWORD ON
+INTSEARCHQUERY ON
+INTSEARCHWORD ON
+BROWSERREP ON
+OSREP ON
+STATUS ON
+USER ON
+REDIRUSER ON
+FAILUSER ON
+SIZE OFF
+BROWSERSUM OFF
+DAILYSUM OFF
+YEARLY OFF
+QUARTERLY OFF
+WEEKLY OFF
+HOURLYSUM OFF
+QUARTERREP OFF
+QUARTERSUM OFF
+FIVEREP OFF
+FIVESUM OFF
+DOMAIN OFF
+ORGANISATION OFF
+DIRECTORY OFF
+HOURLYREP OFF
+SEARCHQUERYFLOOR -0r
+SEARCHWORDFLOOR -0r
+INTSEARCHWORDFLOOR -0r
+INTSEARCHQUERYFLOOR -0r
+HOSTFLOOR -0r
+REDIRFLOOR -0r
+FAILHOSTFLOOR -0r
+REDIRHOSTFLOOR -0r
+BROWREPFLOOR -0r
+REQFLOOR -0r
+REDIRREFFLOOR -0r
+REFFLOOR -0r
+FAILREFFLOOR -0r
+FAILFLOOR -0r
+TYPEFLOOR -0r
+REFSITEFLOOR -0r
+VHOSTFLOOR -0r
+REDIRVHOSTFLOOR -0r
+FAILVHOSTFLOOR -0r
+STATUSFLOOR -0r
+OSFLOOR -0r
+ALLBACK ON
+YEARBACK OFF
+QUARTERLYBACK OFF
+MONTHBACK OFF
+DAYREPBACK OFF
+HOURREPBACK OFF
+WEEKBACK OFF
+QUARTERREPBACK OFF
+FIVEREPBACK OFF
+YEARROWS 0
+QUARTERLYROWS 0
+MONTHROWS 0
+WEEKROWS 0
+DAYREPROWS 0
+HOURREPROWS 0
+QUARTERREPROWS 0
+FIVEREPROWS 0
+REQSORTBY REQUESTS
+REDIRSORTBY REQUESTS
+FAILSORTBY REQUESTS
+DOMSORTBY BYTES
+ORGSORTBY REQUESTS
+DIRSORTBY BYTES
+TYPESORTBY BYTES
+HOSTSORTBY ALPHABETICAL
+REDIRHOSTSORTBY REQUESTS
+FAILHOSTSORTBY REQUESTS
+REFSORTBY REQUESTS
+REFSITESORTBY REQUESTS
+REDIRREFSORTBY REQUESTS
+FAILREFSORTBY REQUESTS
+BROWREPSORTBY REQUESTS
+BROWSUMSORTBY REQUESTS
+OSSORTBY PAGES
+SUBOSSORTBY PAGES
+VHOSTSORTBY BYTES
+REDIRVHOSTSORTBY REQUESTS
+FAILVHOSTSORTBY REQUESTS
+USERSORTBY REQUESTS
+REDIRUSERSORTBY REQUESTS
+FAILUSERSORTBY REQUESTS
+SEARCHQUERYSORTBY REQUESTS
+SEARCHWORDSORTBY REQUESTS
+INTSEARCHQUERYSORTBY REQUESTS
+INTSEARCHWORDSORTBY REQUESTS
+STATUSSORTBY ALPHABETICAL
+REQCHART ON
+REDIRCHART ON
+FAILCHART ON
+TYPECHART ON
+SIZECHART ON
+PROCTIMECHART ON
+DIRCHART ON
+HOSTCHART ON
+REDIRHOSTCHART ON
+FAILHOSTCHART ON
+DOMCHART ON
+ORGCHART ON
+REFCHART ON
+REFSITECHART ON
+REDIRREFCHART ON
+FAILREFCHART ON
+BROWREPCHART ON
+BROWSUMCHART ON
+OSCHART ON
+VHOSTCHART ON
+REDIRVHOSTCHART ON
+FAILVHOSTCHART ON
+USERCHART ON
+REDIRUSERCHART ON
+FAILUSERCHART ON
+SEARCHQUERYCHART ON
+SEARCHWORDCHART ON
+INTSEARCHQUERYCHART ON
+INTSEARCHWORDCHART ON
+STATUSCHART ON
+REQLINKINCLUDE pages
+REDIRLINKEXCLUDE *
+FAILLINKEXCLUDE *
+REFLINKINCLUDE *
+REDIRREFLINKINCLUDE *
+FAILREFLINKINCLUDE *
+HEADERFILE none
+FOOTERFILE none
+LOGO analogo
+LOGOURL http://$DOMAINNAME/
+REPORTORDER x1QmWDdHwh4657oZSlLujJkKfsNnBbpvRMcPztiEIYyr
+GENSUMLINES ALL
+GOTOS ON
+RUNTIME OFF
+DESCRIPTIONS OFF
+REPORTSPAN OFF
+REPORTSPANTHRESHOLD 0
+WEEKBEGINSON SUNDAY
+LASTSEVEN ON
+MARKCHAR +
+REPSEPCHAR none
+COMPSEP \"	\"
+RAWBYTES OFF
+BYTESDP 2
+NOROBOTS ON
+SEARCHCHARCONVERT ON
+BARSTYLE b
+HTMLPAGEWIDTH 65
+ASCIIPAGEWIDTH 76
+MINGRAPHWIDTH 15
+DNS NONE
+SUBTYPE *.gz,*.Z
+SEARCHENGINE http://*google.*/* q,as_q,as_epq,as_oq
+SEARCHENGINE http://*altavista.*/* q
+SEARCHENGINE http://*yahoo.*/* p
+SEARCHENGINE http://*lycos.*/* query,wfq
+SEARCHENGINE http://*aol.*/* query
+SEARCHENGINE http://*excite.*/* search
+SEARCHENGINE http://*go2net.*/* general
+SEARCHENGINE http://*metacrawler.*/* general
+SEARCHENGINE http://*msn.*/* q,MT
+SEARCHENGINE http://*netscape.*/* search
+SEARCHENGINE http://*looksmart.*/* key
+SEARCHENGINE http://*webcrawler.*/* qkw,search,searchText
+SEARCHENGINE http://*overture.*/* Keywords
+SEARCHENGINE http://*teoma.*/* q
+SEARCHENGINE http://*infospace.*/* qkw
+SEARCHENGINE http://*alltheweb.*/* q
+SEARCHENGINE http://*dogpile.*/* q
+SEARCHENGINE http://*ask.*/* q,ask
+SEARCHENGINE http://*alltheweb.*/* query
+SEARCHENGINE http://*northernlight.*/* qr
+SEARCHENGINE http://*nlsearch.*/* qr
+SEARCHENGINE http://*dmoz.*/* search
+SEARCHENGINE http://*/netfind* query
+SEARCHENGINE http://*/pursuit query
+SEARCHENGINE http://*/bing.*/* q,MT
+FILELOWMEM 0
+HOSTLOWMEM 0
+BROWLOWMEM 0
+REFLOWMEM 0
+USERLOWMEM 0
+VHOSTLOWMEM 0
+SETTINGS OFF
+DEBUG OFF
+WARNINGS OFF
+PROGRESSFREQ 0
+ERRLINELENGTH 78" > $DOMAIN_DIRECTORY/stats/web-stats/statistics.cfg
+}	
+
+function init_logs() {
+	if [ -z "$DOMAINNAME" ]; then
+		$KWNG_LOG --error --code=7901 --message="Missing arguments"
+		exit 7901
+	fi
+	# DOMAIN_DIRECTORY="$VHOSTS_DIR/$DOMAINNAME"
+	# echo "$CONFIG" > "$DOMAIN_DIRECTORY/stats/web-stats/statistics.cfg"
+	
+	[[ "$STATISTICS" = "awstats" ]] && $AWSTATS --init-domain --domain=$DOMAINNAME
+	[[ "$STATISTICS" = "webalizer" ]] && $WEBALIZERMNG --init-domain --domain=$DOMAINNAME
+	# default_conf	
+	# Eski statistics
+	# $WEB_STATISTICS_TOOL -G +g"$DOMAIN_DIRECTORY/stats/web-stats/statistics.cfg"
+	# $PANEL_HTTP_DIR/php/bin/php $WEB_STATISTICS_CLI "Statistics" "logparse" $DOMAINNAME
+	$KWNG_LOG --success --code=7201 --message="Statistics calculated for $DOMAINNAME"
+}
+
+function get_report_check_flags() {
+	if [ -z "$DOMAINNAME" ]; then
+		$KWNG_LOG --error --code=7902 --message="Missing arguments"
+		exit 7902
+	fi
+}
+function get_report() {
+	cat $VHOSTS_DIR/$DOMAINNAME/stats/web-stats/report.json
+}
+
+check_command
+check_root
+
+PROC_MESSAGE=`echo "Process:$0 $@" | sed 's|["'\'']||g'`
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+case $1 in
+	--init)
+		shift
+		main_case $@
+		init_logs
+		exit 0
+		;;
+	--get-report)
+		shift
+		main_case $@
+		get_report
+		exit 0
+		;;
+esac

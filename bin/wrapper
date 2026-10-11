@@ -1,0 +1,451 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+
+exec 2>/dev/null
+
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+	
+	if [ -x "$KWNG_ENV" ]
+		then
+			IFS='
+			'
+			export `$KWNG_ENV --debug | grep -v "^#"`
+			IFS=' '
+		else
+			$KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+			exit 1000
+	fi
+	
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]
+		then
+			$KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+			exit 1001
+	fi
+
+}
+
+function system_service() {
+	echo "/etc/init.d/$1 $2 & >> /dev/null 2>&1"
+}
+
+function main_case {
+
+	while [ "$1" != "" ]
+	do
+		case $1 in
+			# General Params
+			--user=*)
+				USERNAME=`echo "$1"| sed 's/--user=//g' | tr '[A-Z]' '[a-z]'` 
+				;; 
+			--passwd=*) 
+				PASSWD=`echo "$1"| sed 's/--passwd=//g'` 
+				;; 
+			--domain=*)
+				DOMAIN=`echo $1| sed 's/--domain=//g' | tr '[A-Z]' '[a-z]'` 
+				;; 
+			--subdomain=*)
+				SUBDOMAIN=`echo "$1"| sed 's/--subdomain=//g'`
+				;;
+			--ipaddr=*) 
+				IPADDR=`echo "$1"| sed 's/--ipaddr=//g'` 
+				;; 
+			--old-ipaddr=*)
+				OLDIPADDR=`echo "$1"| sed 's/--old-ipaddr=//g'`
+				;;
+			--domain-list=*)
+				DOMAINLIST=`echo "$1"| sed 's/--domain-list=//g'`
+				;;
+			--sub-list=*)
+				SUBLIST=`echo "$1"| sed 's/--sub-list=//g'`
+				;;
+			# Vhost Params
+			--ssl=*) 
+				SSL=`echo $1 | sed 's/--ssl=//g' | tr '[A-Z]' '[a-z]'` 
+				;;
+			--ssl-name=*)
+				SSLNAME=`echo $1 | sed 's/--ssl-name=//g'`
+				;;
+			--php=*) 
+				PHP=`echo $1 | sed 's/--php=//g' | tr '[A-Z]' '[a-z]'` 
+				;; 
+			--safemode=*) 
+				SAFEMOD=`echo $1 | sed 's/--safemode=//g' | tr '[A-Z]' '[a-z]'` 
+				;; 
+			--cgi=*) 
+				CGI=`echo $1 | sed 's/--cgi=//g' | tr '[A-Z]' '[a-z]'` 
+				;; 
+			--perl=*) 
+				PERL=`echo $1 | sed 's/--perl=//g' | tr '[A-Z]' '[a-z]'` 
+				;; 
+			--python=*) 
+				PYTHON=`echo $1 | sed 's/--python=//g' | tr '[A-Z]' '[a-z]'` 
+				;;
+			--stats=*)
+				STATS=`echo $1 | sed 's/--stats=//g' | tr '[A-Z]' '[a-z]'` 
+				;;
+			# Service Params
+			--web=*)
+				WEBSERVICE=`echo $1 | sed 's/--web=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--dns=*)
+				DNSSERVICE=`echo $1 | sed 's/--dns=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--mail=*)
+				MAILSERVICE=`echo $1 | sed 's/--mail=//g' | tr '[A-Z]' '[a-z]'`
+				;;				
+			# Quota Params
+			--disk-quota=*)
+				DISK_QUOTA=`echo $1 | sed 's/--disk-quota=//g'`
+				;;
+			--mail-quota=*)
+				MAIL_QUOTA=`echo $1 | sed 's/--mail-quota=//g'`
+				;;
+			--bw-quota=*)
+				BW_QUOTA=`echo $1 | sed 's/--bw-quota=//g'`
+				;;
+			--quota-over=*)
+				QUOTA_OVER=`echo $1 | sed 's/--quota-over=//g'`
+				;;
+			# User Params
+			--new-quota*)
+				NEW_QUOTA=`echo $1 | sed 's/--new-quota=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--new-passwd=*)
+				NEW_PASSWD=`echo "$1"| sed 's/--new-passwd=//g'`
+				;;
+			--new-user=*)
+				NEW_USER=`echo "$1"| sed 's/--new-user=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			# Bind Params
+			--host=*)
+				HOST=`echo "$1"| sed 's/--host=//g'`
+				;;
+			--type=*)
+				TYPE=`echo "$1"| sed 's/--type=//g'`
+				;;
+			--value=*)
+				VALUE=`echo "$1"| sed 's/--value=//g'`
+				;;
+			--old-host=*)
+				OLDHOST=`echo "$1"| sed 's/--old-host=//g'`
+				;;
+			--old-type=*)
+				OLDTYPE=`echo "$1"| sed 's/--old-type=//g'`
+				;;
+			--old-value=*)
+				OLDVALUE=`echo "$1"| sed 's/--old-value=//g'`
+				;;
+			--opt=*)
+				OPT=`echo $1 | sed 's/--opt=//g'`
+				;;
+			# Domain Mail Settings
+			--mail-addr=*)
+				MAIL_ADDR=`echo "$1" | sed 's/--mail-addr=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--options=*)
+				OPTIONS=`echo "$1"| sed 's/--options=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			# Mail Addr Settings
+			--forward=*)
+				FORWARD=`echo $1 | sed 's/--forward=//g'`
+				;;
+			# Auto Responder
+			--file=*)
+				FILENAME=`echo $1 | sed 's/--file=//g'`
+				;;
+			# No inbox
+			--no-inbox=*)
+				INBOX="--no-inbox"
+				;;
+			# Alias Params
+			--alias=*)
+				ALIAS=`echo $1 | sed 's/--alias=//g'| tr '[A-Z]' '[a-z]'`
+				;;
+			--new-alias=*)
+				NEWALIAS=`echo $1 | sed 's/--new-alias=//g'| tr '[A-Z]' '[a-z]'`
+				;;
+			--mail-serv=*)
+				MAIL_SERV=`echo $1 | sed 's/--mail-serv=//g'| tr '[A-Z]' '[a-z]'`
+				;;
+			--web-serv=*)
+				WEB_SERV=`echo $1 | sed 's/--web-serv=//g'| tr '[A-Z]' '[a-z]'`
+				;;
+			--sync=*)
+				DOMAIN_SYNC=`echo $1 | sed 's/--sync=//g'| tr '[A-Z]' '[a-z]'`
+				;;
+			# Protect Dir
+			--pro-dir=*)
+				PROTECT_DIR=`echo $1 | sed 's/--pro-dir=//g'`
+				;;
+			--old-pro-dir=*)
+				OLD_PROTECT_DIR=`echo $1 | sed 's/--old-pro-dir=//g'`
+				;;
+			--pro-text=*)
+				PROTECT_TEXT=`echo $1 | sed 's/--pro-text=//g'`
+				;;
+			# Network Mng
+			--netmask=*)
+				NETMASK=`echo $1 | sed 's/--netmask=//g'`
+				;;
+			--int=*)
+				INTERFACE=`echo $1 | sed 's/--int=//g'`
+				;;
+			--shared=*)
+				SHARED=`echo $1 | sed 's/--shared=//g'`
+				;;
+			--ftp-type=*)
+				FTPTYPE=`echo $1 | sed 's/--ftp-type=//g'`
+				;;
+			--sub-user=*)
+				SUBUSERNAME=`echo $1 | sed 's/--sub-user=//g'`
+				;;
+		esac
+		shift
+	done
+
+}
+
+function user_update() {
+
+	if [ ! -z $NEW_PASSWD ]
+		then
+			$USERMNG --update --user=$USERNAME --new-passwd=$NEW_PASSWD
+	fi
+	
+	if [ ! -z $NEW_USER ]
+		then
+			$CRONTABMNG --update --user=$USERNAME --new-user=$NEW_USER
+			$USERMNG --update --user=$USERNAME --new-user=$NEW_USER
+			$DIRECTORYMNG --update --domain=$DOMAIN --new-user=$NEW_USER
+			$VHOSTMNG --update-user --domain=$DOMAIN --user=$USERNAME --new-user=$NEW_USER
+	fi
+
+}
+
+function vhost_create() {
+
+	$USERMNG --create --user=$USERNAME --passwd=$PASSWD --domain=$DOMAIN
+	$DIRECTORYMNG --create --user=$USERNAME  --domain=$DOMAIN
+	# $DNSMNG --create --domain=$DOMAIN --ipaddr=$IPADDR
+	if [ "$QUOTA_OVER" = "on" ]
+		then
+			# Geçmişten kalan bir kota varsa iptal etmek için..
+			# $QUOTAMNG --set-quota --user=$USERNAME --quota=0
+			$VHOSTMNG --create --domain=$DOMAIN --user=$USERNAME --ipaddr=$IPADDR \
+				--ssl=$SSL --php=$PHP --safemode=$SAFEMOD --cgi=$CGI --perl=$PERL --python=$PYTHON \
+				--bw-quota=0 --stats=$STATS
+		else
+			# $QUOTAMNG --set-quota --user=$USERNAME --quota=$DISK_QUOTA
+			$VHOSTMNG --create --domain=$DOMAIN --user=$USERNAME --ipaddr=$IPADDR \
+				--ssl=$SSL --php=$PHP --safemode=$SAFEMOD --cgi=$CGI --perl=$PERL --python=$PYTHON \
+				--bw-quota=$BW_QUOTA --stats=$STATS
+	fi
+	
+	if [ "$MAIL_QUOTA" = "0" ]
+		then
+			$MAILMNG --create --domain=$DOMAIN --passwd=$PASSWD
+		else
+			$MAILMNG --create --domain=$DOMAIN --passwd=$PASSWD --quota=$MAIL_QUOTA
+	fi
+	
+	if [ "$WEBSERVICE" = "off" ]
+		then
+			$VHOSTMNG --suspend --domain=$DOMAIN
+			$USERMNG --suspend --user=$USERNAME
+	fi
+	if [ "$MAILSERVICE" = "off" ]
+		then
+			$MAILMNG --suspend --domain=$DOMAIN
+	fi
+	
+	$SERVICESMNG --reload --service=web
+	$SERVICESMNG --reload --service=dns
+	exit 0
+}
+function vhost_update() {
+
+	if [ "$BW_QUOTA" = "unlimited" ]
+		then
+			BW_QUOTA="0"
+	fi
+
+	# Kota asimi var veya yok..
+	if [ "$QUOTA_OVER" = "on" ]
+		then
+			# Geçmişten kalan bir kota varsa iptal etmek için..
+			$VHOSTMNG --update --domain=$DOMAIN --user=$USERNAME --ipaddr=$IPADDR \
+				--ssl=$SSL --php=$PHP --safemode=$SAFEMOD --cgi=$CGI --perl=$PERL --python=$PYTHON \
+				--bw-quota=0 --stats=$STATS
+		else
+			$VHOSTMNG --update --domain=$DOMAIN --user=$USERNAME --ipaddr=$IPADDR \
+				--ssl=$SSL --php=$PHP --safemode=$SAFEMOD --cgi=$CGI --perl=$PERL --python=$PYTHON \
+				--bw-quota=$BW_QUOTA --stats=$STATS
+	fi
+	if [ ! -z $OLDIPADDR ]
+		then
+			$DNSMNG --change-ipaddr --domain=$DOMAIN --ipaddr=$IPADDR --old-ipaddr=$OLDIPADDR --domain-list=$DOMAINLIST
+	fi
+	
+	if [ ! -z $SUBLIST ]
+		then
+			SUBDOMAINLIST=`echo "$SUBLIST" | sed 's/#/ /g'`
+			for SUBDOMAINS in $SUBDOMAINLIST
+			do
+				$SUBVHOSTMNG --change-ipaddr --subdomain=$SUBDOMAINS --domain=$DOMAIN --old-ipaddr=$OLDIPADDR --ipaddr=$IPADDR
+			done
+	fi
+	$SERVICESMNG --reload --service=web
+	$SERVICESMNG --reload --service=dns
+
+	exit 0
+}
+function vhost_remove() {
+	# SSLMNG domain silindiginde ssllerde silinmesi gerekiyor.
+	$MAILMNG --remove --domain=$DOMAIN
+	$VHOSTMNG --remove --domain=$DOMAIN
+	$DNSMNG --remove --domain=$DOMAIN 
+	$DIRECTORYMNG --remove --domain=$DOMAIN 
+	$USERMNG --remove --user=$USERNAME 
+	$CRONTABMNG --remove-perm --user=$USERNAME 
+	$BACKUPMNG --remove-domain --domain=$DOMAIN 
+	$SERVICESMNG --reload --service=web
+	$SERVICESMNG --reload --service=dns
+
+	exit 0
+}
+
+function vhost_suspend() {
+
+	$VHOSTMNG --suspend --domain=$DOMAIN 
+	$USERMNG --suspend --user=$USERNAME 
+	# $MAILMNG --suspend --domain=$DOMAIN 
+	$SERVICESMNG --reload --service=web
+
+	exit 0
+}
+function vhost_unsuspend() {
+
+	$VHOSTMNG --unsuspend --domain=$DOMAIN
+	$USERMNG --unsuspend --user=$USERNAME
+	# $MAILMNG --unsuspend --domain=$DOMAIN
+	$SERVICESMNG --reload --service=web
+
+}
+
+function vhost_sub_create() {
+	
+	# $SUBUSERMNG --create --sub-user=$SUBUSERNAME --passwd=$PASSWD --domain=$DOMAIN --subdomain=$SUBDOMAIN
+	if [ "$FTPTYPE" = "native" ]
+		then
+			$SUBDIRECTORYMNG --create --sub-user=$SUBUSERNAME --domain=$DOMAIN --subdomain=$SUBDOMAIN
+			$SUBVHOSTMNG --create --domain=$DOMAIN --subdomain=$SUBDOMAIN --user=$SUBUSERNAME --ipaddr=$IPADDR \
+			--ssl=$SSL --php=$PHP  --safemode=$SAFEMOD  --cgi=$CGI   --perl=$PERL  --python=$PYTHON --ftp-type=$FTPTYPE
+		else
+			$SUBDIRECTORYMNG --create --sub-user=$USERNAME --domain=$DOMAIN --subdomain=$SUBDOMAIN
+			$SUBVHOSTMNG --create --domain=$DOMAIN --subdomain=$SUBDOMAIN --user=$USERNAME --ipaddr=$IPADDR \
+			--ssl=$SSL --php=$PHP  --safemode=$SAFEMOD  --cgi=$CGI   --perl=$PERL  --python=$PYTHON --ftp-type=$FTPTYPE
+	fi
+	
+	$DNSMNG --create-rec --domain=$DOMAIN --type=A --host=$SUBDOMAIN.$DOMAIN. --value=$IPADDR
+
+	$SERVICESMNG --reload --service=web
+	$SERVICESMNG --reload --service=dns
+
+	exit 0
+}
+function vhost_sub_update() {
+
+	if [ "$FTPTYPE" = "native" ]
+		then
+			$SUBDIRECTORYMNG --update --sub-user=$SUBUSERNAME --domain=$DOMAIN --subdomain=$SUBDOMAIN
+			$SUBVHOSTMNG --update --domain=$DOMAIN --subdomain=$SUBDOMAIN --user=$SUBUSERNAME --ipaddr=$IPADDR \
+			--ssl=$SSL --php=$PHP  --safemode=$SAFEMOD  --cgi=$CGI   --perl=$PERL  --python=$PYTHON --ftp-type=$FTPTYPE
+		else
+			$SUBDIRECTORYMNG --update --sub-user=$USERNAME --domain=$DOMAIN --subdomain=$SUBDOMAIN
+			$SUBVHOSTMNG --update --domain=$DOMAIN --subdomain=$SUBDOMAIN --user=$USERNAME --ipaddr=$IPADDR \
+			--ssl=$SSL --php=$PHP  --safemode=$SAFEMOD  --cgi=$CGI   --perl=$PERL  --python=$PYTHON --ftp-type=$FTPTYPE
+	fi
+	
+	$SERVICESMNG --reload --service=web
+
+	exit 0
+}
+function vhost_sub_remove() {
+
+	$SUBVHOSTMNG --remove --domain=$DOMAIN --subdomain=$SUBDOMAIN --ftp-type=$FTPTYPE
+	$DNSMNG --remove-rec --domain=$DOMAIN --host=$SUBDOMAIN.$DOMAIN. --type=$TYPE --value=$VALUE
+	$SUBDIRECTORYMNG --remove --domain=$DOMAIN --subdomain=$SUBDOMAIN
+	# [[ $FTPTYPE = "native" ]] && $SUBUSERMNG --remove --sub-user=$SUBUSERNAME
+	# [[ $FTPTYPE = "native" ]] && $CRONTABMNG --remove-perm --user=$SUBUSERNAME
+
+	$SERVICESMNG --reload --service=web
+	$SERVICESMNG --reload --service=dns
+
+	exit 0
+
+}
+
+
+##### MAIN FUNCTION #####
+#########################
+# check_command
+check_command
+check_root
+
+PROC_MESSAGE=`echo "Process:$0 $@" | sed 's|["'\'']||g'`
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+PROCESS="$1"
+
+case $1 in
+	--create-vhost)
+		shift
+		main_case "$@"
+		vhost_create
+		;;
+	--update-vhost)
+		shift
+		main_case "$@"
+		vhost_update
+		;;
+	--remove-vhost)
+		shift
+		main_case "$@"
+		vhost_remove
+		;;
+	--suspend-vhost)
+		shift
+		main_case "$@"
+		vhost_suspend
+		;;
+	--unsuspend-vhost)
+		shift
+		main_case "$@"
+		vhost_unsuspend
+		;;
+	--create-vhost-sub)
+		shift
+		main_case "$@"
+		vhost_sub_create
+		;;
+	--update-vhost-sub)
+		shift
+		main_case "$@"
+		vhost_sub_update
+		;;
+	--remove-vhost-sub)
+		shift
+		main_case "$@"
+		vhost_sub_remove 
+		;;
+	--update-user)
+		shift
+		main_case "$@"
+		user_update
+		;;
+esac

@@ -1,0 +1,558 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+
+#exec 2>/dev/null
+
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+	
+	if [ -x "$KWNG_ENV" ]; then
+              IFS='
+              '
+              export `$KWNG_ENV --debug | grep -v "^#"`
+              IFS=' '
+       else
+              $KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+              exit 1000
+	fi
+
+	if [ ! -f "$PANEL_CONFIG" ]; then
+              $KWNG_LOG --error --code=1002 --message="Fpanel config doesn't exists."
+              exit 1002
+	fi
+
+	if [ -f $SYSTEM_PACKAGE_CONF ]; then
+		. $SYSTEM_PACKAGE_CONF
+       else
+              $KWNG_LOG --error --code=1003 --message="Unable to load installed system packages. Please contact with system administrator."
+              exit 1003
+	fi
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]; then
+              $KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+              exit 1001
+	fi
+}
+
+function check_system() {
+	if [ ! -d $VHOSTS_DIR ]; then
+              $KWNG_LOG --error --code=1801 --message="$VHOSTS_DIR doesn't exist on system"
+              exit 1801
+	fi
+}
+
+function generate_htpasswd_filename() {
+       case $DIRECTORY in
+              /)
+                     HTPASSWD_FILE=".htpasswd"
+                     PASSWD_FILE="passwd"
+                     ;;
+              *)
+                     HTPASSWD_FILE=".htpasswd`echo $DIRECTORY | tr '/' '.'`"
+                     PASSWD_FILE="passwd`echo $DIRECTORY | tr '/' '.'`"
+                     ;;
+       esac
+}
+function main_case() {
+	while [ "$1" != "" ]
+	do
+		case $1 in
+			--domain=*)
+				DOMAINNAME=`echo "$1" | sed 's/--domain=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--subdomain=*)
+				SUBDOMAIN=`echo "$1" | sed 's/--subdomain=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--user=*)
+				USERNAME=`echo "$1" | sed 's/--user=//g' | tr '[A-Z]' '[a-z]'`
+				;;
+			--passwd=*)
+				PASSWORD=`echo "$1" | sed 's/--passwd=//g'`
+				;;
+			--dir=*)
+				DIRECTORY=`echo "$1" | sed 's/--dir=//g'`
+				;;
+			--text=*)
+				TEXT=`echo "$1" | sed 's/--text=//g'`
+				echo "Text: $TEXT" >> /tmp/log
+				;;
+			--old-dir=*)
+				OLDDIRECTORY=`echo $1 | sed 's/--old-dir=//g'`
+				;;
+		esac
+		shift
+	done
+}
+
+#Protect Directory Control Functions
+function check_domain() {
+	if [ -d $VHOSTS_DIR/$DOMAINNAME ]; then
+              echo "1" # Domain var..
+       else
+              echo "0" # Domain yok..
+	fi
+}
+function check_directory() {
+	if [ -d $VHOSTS_DIR/$1/vhost/httpdoc$2 ]; then
+              echo "1" # Directory var.
+       else
+              echo "0" # Directory yok.
+	fi
+}
+function check_htpasswd_file() {
+       if [ -z "$SUBDOMAIN" ]; then
+              if [ -f $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$HTPASSWD_FILE ]; then
+                     echo "1" # htpasswd file var
+              else
+                     echo "0" # htpasswd file yok
+              fi
+       else
+              if [ -f $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$HTPASSWD_FILE ]; then
+                     echo "1" # htpasswd file var
+              else
+                     echo "0" # htpasswd file yok
+              fi
+       fi
+}
+function check_user_in_htpasswd_file() {
+       if [ -z "$SUBDOMAIN" ]; then
+       	STATUS=`cat $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$HTPASSWD_FILE | grep "^$USERNAME:"`
+       else
+       	STATUS=`cat $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$HTPASSWD_FILE | grep "^$USERNAME:"`
+       fi
+
+	if [ "X$STATUS" = "X" ]; then
+              echo "0" # User yok.
+       else
+              echo "1" # User var.
+	fi
+}
+function check_domain_in_passwd_include() {
+       if [ "$HTTPD_SERVER" == "apache" ]; then
+              if [ -f "$DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$PASSWD_FILE" ]; then
+                     [[ "$HTTPD_SERVER" == "apache" ]] && STATUS=`cat $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$PASSWD_FILE | grep "<Directory $VHOSTS_DIR/$DOMAINNAME/vhost/httpdoc$DIRECTORY>"`
+              fi
+       else
+              if [ -f "$DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$PASSWD_FILE.include" ]; then
+                     [[ "$HTTPD_SERVER" == "nginx" ]] && STATUS=`cat $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$PASSWD_FILE.include | grep "location $DIRECTORY"`
+              fi
+       fi
+
+       if [ "X$STATUS" = "X" ]; then
+              echo "0" # passwd.include dosyasında yok..
+       else
+              echo "1" # passwd.include dosyasında var..
+       fi
+}
+function check_domain_in_passwd_include_subdomains() {
+       if [ "$HTTPD_SERVER" == "apache" ]; then
+              if [ -f "$DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$PASSWD_FILE" ]; then
+                     [[ "$HTTPD_SERVER" == "apache" ]] && STATUS=`cat $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$PASSWD_FILE | grep "<Directory $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY>"`
+              fi
+       else
+              if [ -f "$DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$PASSWD_FILE.include" ]; then
+                     [[ "$HTTPD_SERVER" == "nginx" ]] && STATUS=`cat $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$PASSWD_FILE.include | grep "location $DIRECTORY"`
+              fi
+       fi
+
+       if [ "X$STATUS" = "X" ]; then
+              echo "0" # passwd.include dosyasında yok..
+       else
+              echo "1" # passwd.include dosyasında var..
+       fi
+}
+
+function check_protect_user_not_exist() {
+	for USER in $USERLIST
+	do
+		STATUS=`cat $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/.htpasswd."$DIRECTORY" |grep ^$USER:`
+		if [ "X$STATUS" = "X" ]; then
+                     $KWNG_LOG --error --code=1802 --message="$USERNAME doesn't exist .htpasswd.$DIRECTORY"
+			exit 1802
+		fi
+	done
+}
+function check_conf_files_remove() {
+	if [ ! -f $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/passwd ]; then
+              $KWNG_LOG --error --code=1803 --message="$DOMAINNAME/conf/prodir/passwd doesnt exist"
+              exit 1803
+	fi
+}
+function check_conf_files_create() {
+	if [ ! -f $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/passwd.include ]; then
+              touch $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/passwd.include
+	fi
+	if [ "$DIRECTORY" = "/" ]; then
+              if [ ! -f $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/.htpasswd ]; then
+                     touch $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/.htpasswd
+                     chown root:$NOGROUP $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/.htpasswd
+              fi
+       else
+              if [ ! -f $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/.htpasswd."$DIRECTORY" ]; then
+                     touch $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/.htpasswd."$DIRECTORY"
+                     chown root:$NOGROUP $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/.htpasswd."$DIRECTORY"
+              fi
+	fi
+}
+
+function create_passwd_include_apache() {
+echo "<Directory $VHOSTS_DIR/$DOMAINNAME/vhost/httpdoc$DIRECTORY>
+	AuthType Basic
+	AuthName \"`echo \"$TEXT\" | tr '#' ' '`\"
+	AuthUserFile $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$HTPASSWD_FILE
+	require  valid-user
+</Directory>
+" > $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$PASSWD_FILE
+}
+function create_subdomain_passwd_include_apache() {
+       if [ ! -d "$DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN" ]; then
+              mkdir -p $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN
+       fi
+       echo "<Directory $VHOSTS_DIR/$DOMAINNAME/subdomains/$SUBDOMAIN/httpdoc$DIRECTORY>
+	AuthType Basic
+	AuthName \"`echo \"$TEXT\" | tr '#' ' '`\"
+	AuthUserFile $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$HTPASSWD_FILE
+	require  valid-user
+</Directory>" > $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$PASSWD_FILE
+}
+
+function create_passwd_include_nginx() {
+       echo "
+       location $DIRECTORY {
+	       auth_basic \"`echo \"$TEXT\" | tr '#' ' '`\";
+	       auth_basic_user_file  $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$HTPASSWD_FILE;
+       }" > $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$PASSWD_FILE.include
+}
+function create_subdomain_passwd_include_nginx() {
+       if [ ! -d "$DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN" ]; then
+              mkdir -p $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN
+       fi
+       echo "
+       location $DIRECTORY {
+	       auth_basic \"`echo \"$TEXT\" | tr '#' ' '`\";
+	       auth_basic_user_file  $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$HTPASSWD_FILE;
+       }" > $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$PASSWD_FILE.include
+}
+
+function create_passwd_include() {
+       [[ "$HTTPD_SERVER" == "apache" ]] && create_passwd_include_apache
+       [[ "$HTTPD_SERVER" == "nginx" ]] && create_passwd_include_nginx
+}
+function create_subdomain_passwd_include() {
+       [[ "$HTTPD_SERVER" == "apache" ]] && create_subdomain_passwd_include_apache
+       [[ "$HTTPD_SERVER" == "nginx" ]] && create_subdomain_passwd_include_nginx
+}
+
+function create_dir_check_flag() {
+	if [ -z "$DIRECTORY" ] || [ -z "$DOMAINNAME" ]; then
+              $KWNG_LOG --error --code=1804 --message="Missing arguments"
+              usage
+              exit 1804
+	fi
+	generate_htpasswd_filename
+
+       if [ -z "$SUBDOMAIN" ]; then
+       	STATUS=`check_domain_in_passwd_include`
+       else
+       	STATUS=`check_domain_in_passwd_include_subdomains`
+       fi
+	if [ "$STATUS" = "1" ]; then
+              $KWNG_LOG --error --code=1805 --message="$DIRECTORY already protected for $DOMAINNAME"
+              exit 1805
+	fi
+}
+function create_dir() {
+       if [ -z "$SUBDOMAIN" ]; then
+              create_passwd_include
+       else
+              create_subdomain_passwd_include
+       fi
+	$KWNG_LOG --success --code=1801 --message="Protected directory info is writed for $DOMAINNAME"
+	exit 0
+}
+
+function remove_dir_check_flag() {
+	if [ -z "$DIRECTORY" ] || [ -z "$DOMAINNAME" ]; then
+              $KWNG_LOG --error --code=1806 --message="Missing arguments"
+              usage
+              exit 1806
+	fi
+
+	generate_htpasswd_filename
+
+	STATUS=`check_domain`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=1807 --message="$DOMAINNAME not found"
+              exit 1807
+	fi
+}
+function remove_dir() {
+	if [ "$HTTPD_SERVER" == "apache" ]; then
+              if [ -z "$SUBDOMAIN" ]; then
+                     rm -rf $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$PASSWD_FILE
+                     rm -rf $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$HTPASSWD_FILE
+              else
+                     rm -rf $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$PASSWD_FILE
+                     rm -rf $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$HTPASSWD_FILE
+              fi
+
+       else
+              if [ -z "$SUBDOMAIN" ]; then
+                     rm -rf $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$PASSWD_FILE.include
+                     rm -rf $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$HTPASSWD_FILE
+              else
+                     rm -rf $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$PASSWD_FILE.include
+                     rm -rf $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$HTPASSWD_FILE
+              fi
+
+	fi
+	$KWNG_LOG --success --code=1802 --message="Removed protected directory $DIRECTORY from $DOMAINNAME"
+	$SERVICESMNG --restart --service=web
+	exit 0
+}
+
+function update_dir_check_flag() {
+	if [ -z "$DIRECTORY" ] || [ -z "$DOMAINNAME" ] || [ -z "$OLDDIRECTORY" ]; then
+              $KWNG_LOG --error --code=1808 --message="Missing arguments"
+              usage
+              exit 1808
+	fi
+
+	generate_htpasswd_filename
+	
+	STATUS=`check_domain`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=1809 --message="$DOMAINNAME not found"
+              exit 1809
+	fi
+}
+function update_dir() {
+       case $OLDDIRECTORY in
+              /)
+                     OLD_HTPASSWD_FILE=".htpasswd"
+                     OLD_PASSWD_FILE="passwd"
+                     ;;
+              *)
+                     OLD_HTPASSWD_FILE=".htpasswd`echo $OLDDIRECTORY | tr '/' '.'`"
+                     OLD_PASSWD_FILE="passwd`echo $OLDDIRECTORY | tr '/' '.'`"
+                     ;;
+       esac
+	if [ "$HTTPD_SERVER" == "apache" ]; then
+              if [ -z "$SUBDOMAIN" ]; then
+                     rm -rf $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$OLD_PASSWD_FILE
+                     mv $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$OLD_HTPASSWD_FILE $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$HTPASSWD_FILE
+                     # HTPASSWD dosyasinin ismi degisecek
+                     create_passwd_include
+              else
+                     rm -rf $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$OLD_PASSWD_FILE
+                     mv $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$OLD_HTPASSWD_FILE $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$HTPASSWD_FILE
+                     # HTPASSWD dosyasinin ismi degisecek
+                     create_subdomain_passwd_include
+              fi
+
+       else
+              if [ -z "$SUBDOMAIN" ]; then
+                     rm -rf $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$OLD_PASSWD_FILE.include
+                     mv $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$OLD_HTPASSWD_FILE $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$HTPASSWD_FILE
+                     # HTPASSWD dosyasinin ismi degisecek
+                     create_passwd_include
+              else
+                     rm -rf $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$OLD_PASSWD_FILE.include
+                     mv $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$OLD_HTPASSWD_FILE $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$HTPASSWD_FILE
+                     # HTPASSWD dosyasinin ismi degisecek
+                     create_subdomain_passwd_include
+              fi
+	fi
+
+	$KWNG_LOG --success --code=1803 --message="$DOMAINNAME protect directory $DIRECTORY is updated"
+	$SERVICESMNG --restart --service=web
+	exit 0
+}
+
+function create_user_check_flag() {
+	if [ -z "$USERNAME" ] || [ -z "$DOMAINNAME" ] || [ -z "$PASSWORD" ] || [ -z "$DIRECTORY" ]; then
+              $KWNG_LOG --error --code=1810 --message="Missing arguments"
+              usage
+              exit 1810
+	fi
+
+	generate_htpasswd_filename
+
+	STATUS=`check_domain`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=1811 --message="$DOMAINNAME not found"
+              exit 1811
+	fi
+
+
+	STATUS=`check_htpasswd_file`
+	if [ "$STATUS" = "1" ]; then
+              # Dosya var, icinde USER aranmalidir.
+              STATUS=`check_user_in_htpasswd_file`
+              if [ "$STATUS" = "1" ]; then
+                     $KWNG_LOG --error --code=1812 --message="$USERNAME found in $HTPASSWD_FILE"
+                     exit 1812
+              fi
+	fi
+}
+function create_user() {
+       if [ -z "$SUBDOMAIN" ]; then
+              touch $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$HTPASSWD_FILE
+              htpasswd -b $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$HTPASSWD_FILE $USERNAME $PASSWORD > /dev/null 2>&1
+              chown root:$NOGROUP $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$HTPASSWD_FILE
+       	$KWNG_LOG --success --code=1804 --message="$USERNAME addedd protected directory $DIRECTORY for $DOMAINNAME"
+       else
+              touch $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$HTPASSWD_FILE
+              htpasswd -b $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$HTPASSWD_FILE $USERNAME $PASSWORD > /dev/null 2>&1
+              chown root:$NOGROUP $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$HTPASSWD_FILE
+       	$KWNG_LOG --success --code=1804 --message="$USERNAME addedd protected directory $DIRECTORY for $SUBDOMAIN.$DOMAINNAME"
+       fi
+
+	$SERVICESMNG --restart --service=web
+	exit 0
+}
+
+function remove_user_check_flag() {
+	if [ -z "$USERNAME" ] || [ -z "$DOMAINNAME" ] || [ -z "$DIRECTORY" ]; then
+              $KWNG_LOG --error --code=1813 --message="Missing arguments"
+              usage
+              exit 1813
+	fi
+
+	generate_htpasswd_filename
+
+	STATUS=`check_domain`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=1814 --message="$DOMAINNAME not found"
+              exit 1814
+	fi
+
+	STATUS=`check_htpasswd_file`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=1815 --message="$HTPASSWD_FILE not found for $DOMAINNAME"
+              exit 1815
+	fi
+
+	STATUS=`check_user_in_htpasswd_file`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=1816 --message="$USERNAME not found in $HTPASSWD_FILE"
+              exit 1816
+	fi
+}
+function remove_user() {
+       if [ -z "$SUBDOMAIN" ]; then
+              htpasswd -D $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$HTPASSWD_FILE $USERNAME > /dev/null 2>&1
+              sed -i '/^$/d' $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$HTPASSWD_FILE
+       	$KWNG_LOG --success --code=1804 --message="$USERNAME addedd protected directory $DIRECTORY for $DOMAINNAME"
+       else
+              htpasswd -D $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$HTPASSWD_FILE $USERNAME > /dev/null 2>&1
+              sed -i '/^$/d' $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$HTPASSWD_FILE
+       	$KWNG_LOG --success --code=1804 --message="$USERNAME addedd protected directory $DIRECTORY for $SUBDOMAIN.$DOMAINNAME"
+       fi
+
+	$SERVICESMNG --restart --service=web
+	$KWNG_LOG --success --code=1805 --message="Removed $USERNAME protected directory $DIRECTORY"
+	exit 0
+}
+
+function update_user_check_flag() {
+	if [ -z "$USERNAME" ] || [ -z "$DOMAINNAME" ] || [ -z "$PASSWORD" ] || [ -z "$DIRECTORY" ]; then
+              $KWNG_LOG --error --code=1817 --message="Missing arguments"
+              usage
+              exit 1817
+	fi
+
+	generate_htpasswd_filename
+
+	STATUS=`check_domain`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=1818 --message="$DOMAINNAME not found"
+              exit 1818
+	fi
+
+
+	STATUS=`check_htpasswd_file`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=1819 --message="$HTPASSWD_FILE not found for $DOMAINNAME"
+              exit 1819
+	fi
+
+	STATUS=`check_user_in_htpasswd_file`
+	if [ "$STATUS" = "0" ]; then
+              $KWNG_LOG --error --code=1820 --message="$USERNAME not found in $HTPASSWD_FILE"
+              exit 1820
+	fi	
+}
+function update_user() {
+       if [ -z "$SUBDOMAIN" ]; then
+	       htpasswd -b $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/$HTPASSWD_FILE $USERNAME $PASSWORD >> /dev/null 2>&1
+       else
+	       htpasswd -b $DOMAIN_CONFIGS_DIR/$DOMAINNAME/prodir/subdomains/$SUBDOMAIN/$HTPASSWD_FILE $USERNAME $PASSWORD >> /dev/null 2>&1
+       fi
+	$SERVICESMNG --restart --service=web
+	$KWNG_LOG --success --code=1806 --message="Updated $USERNAME protected directory $DIRECTORY"
+	exit 0
+}
+
+function usage() {
+	echo "Usage: None" >/dev/null
+}
+
+######################
+###### MAIN FUNC #####
+######################
+check_command
+check_root
+check_system
+
+PROC_MESSAGE=`echo "Process:$0 $@" | sed 's|["'\'']||g'`
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+PROCESS="$1"
+
+case $PROCESS in
+	--create-dir)
+		shift
+		main_case "$@"
+		create_dir_check_flag
+		create_dir
+		;;
+	--remove-dir)
+		shift
+		main_case "$@"
+		remove_dir_check_flag
+		remove_dir
+		;;
+	--update-dir)
+		shift
+		main_case "$@"
+		update_dir_check_flag
+		update_dir
+		;;
+	--create-user)
+		shift
+		main_case "$@"
+		create_user_check_flag
+		create_user
+		;;
+	--remove-user)
+		shift
+		main_case "$@"
+		remove_user_check_flag
+		remove_user
+		;;
+	--update-user)
+		shift
+		main_case "$@"
+		update_user_check_flag
+		#check_protect_user_not_exist
+		#check_conf_files_remove
+		update_user
+		;;
+	*)
+		usage
+	;;
+esac

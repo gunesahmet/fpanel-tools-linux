@@ -1,0 +1,258 @@
+#!/bin/bash
+
+# Encrypted by FPanel-Compiler
+
+exec 2>/dev/null
+
+function check_command() {
+	KWNG_LOG="/usr/local/fpanel/core/sbin/logger"
+	KWNG_ENV="/usr/local/fpanel/core/sbin/env"
+
+	if [ -x "$KWNG_ENV" ]; then
+              IFS='
+              '
+              export `$KWNG_ENV --debug | grep -v "^#"`
+              IFS=' '
+       else
+              $KWNG_LOG --error --code=1000 --message="Unable to set env(), please re-install packages kwng-compiler."
+              exit 1000
+	fi
+
+	if [ ! -f "$PANEL_CONFIG" ]; then
+              $KWNG_LOG --error --code=1002 --message="Fpanel config doesn't exists."
+              exit 1002
+	fi
+	GOOGLE_CLOUD="off"
+	AZURE="off"
+	AWS="off"
+	[[ -f "/usr/bin/gcloud" ]] && GOOGLE_CLOUD="on"
+}
+function check_root() {
+	if [ $(id -u) -ne 0 ]; then
+              $KWNG_LOG --error --code=1001 --message="Tool is running without root privileges"
+              exit 1001
+	fi
+}
+
+function check_ipaddr_format() {
+	if [[ $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+		RETVAL="0"
+	else
+		RETVAL="1"
+	fi
+}
+
+function set_hostname() {
+	# Hostname set edilirken yeni hostname hostname dosyas�na yaz�lmazsa hostname set edilmiyor demektir.
+	if [ -z "$HOST" ] || [ -z "$DOMAIN" ]; then
+              cp -Rp $PANEL_DIR/etc/hostname.conf $HOSTNAME_CONF
+       else
+              echo "$HOST.$DOMAIN" > $PANEL_DIR/etc/hostname.conf
+              cp -Rp $PANEL_DIR/etc/hostname.conf $HOSTNAME_CONF
+	fi
+
+	echo -e "# FPanel - Generate Script
+127.0.0.1       localhost.localdomain localhost localdomain
+::1             localhost6.localdomain6 localhost6 localdomain6" > ${HOSTS_FILE}
+
+
+	HOSTNAME=`cat $HOSTNAME_CONF`
+	hostname -F ${HOSTNAME_CONF}
+
+	while read line
+	do
+		# echo $line
+		echo -e "$line\t$HOSTNAME" >> ${HOSTS_FILE}
+	done < <(ip addr | grep -w inet | awk -F' ' '{print $2}' | awk -F'/' '{print $1}')
+
+	$KWNG_LOG --success --code=2001 --message="Hostname set successful"
+
+}
+
+function network_show() {
+	# Default route ayarlari aliniyor..
+	route_show >/dev/null
+	DEFAULT_IPADDR=`default_ipaddr`
+	while read INTERFACE
+	do
+		[ "$INTERFACE" = "lo" ] && continue
+		while read line
+		do
+			IPADDR=`echo $line | awk -F'/' '{print $1}'`
+			NETMASK=`echo $line | awk -F'/' '{print $2}'`
+
+			if [ "$IPADDR" = "" ]; then
+                            continue
+                     else
+                            echo "$IPADDR" | grep "127.*" >/dev/null
+                            [ "$?" = "0" ] && continue
+			fi
+
+			if [ "$DEFAULT_ROUTE_IPADDR" = "$IPADDR" ]; then
+                            GATEWAY="$DEFAULT_ROUTE"
+                     else
+                            GATEWAY=""
+			fi
+
+			if [ "$JSON_DATA" = "" ]; then
+                            JSON_DATA="[\"\",\"$INTERFACE\",\"$IPADDR\",\"$NETMASK\",\"$GATEWAY\"]"
+                            if [ "$GOOGLE_CLOUD" = "on" ] || [ "$AWS" = "on" ] || [ "$AZURE" = "on" ]; then
+                                          JSON_DATA="$JSON_DATA,[\"\",\"$INTERFACE\",\"$DEFAULT_IPADDR\",\"$NETMASK\",\"\"]"
+                            fi
+                     else
+                            JSON_DATA="$JSON_DATA,[\"\",\"$INTERFACE\",\"$IPADDR\",\"$NETMASK\",\"$GATEWAY\"]"
+			fi
+		done < <(ip addr show dev $INTERFACE | grep -w "inet" | awk -F' ' '{print $2}')
+
+	done < <(cat /proc/net/dev | grep ":" | awk -F':' '{print $1}')
+
+	echo "[$JSON_DATA]"
+
+	$KWNG_LOG --success --code=2002 --message="Network showing successfull"
+	exit 0
+}
+function route_show() {
+	DEFAULT_ROUTE=`ip route | grep "^default" | awk -F' ' '{print $3}'`
+	DEFAULT_ROUTE_DEV=`ip route | grep "^default" | awk -F' ' '{print $5}'`
+	DEFAULT_ROUTE_IPADDR=`ip addr show dev $DEFAULT_ROUTE_DEV | grep "global $DEFAULT_ROUTE_DEV" | awk -F' ' '{print $2}' | awk -F'/' '{print $1}' | head -1`
+
+	echo "$DEFAULT_ROUTE"
+	$KWNG_LOG --success --code=2003 --message="Showing route successfull"
+}
+function default_ipaddr() {
+	INTERFACE=`ip route | grep default | awk -F'dev ' '{print $2}' | awk -F' ' '{print $1}'`
+	DEFAULT_IPADDR=`ip addr show dev $INTERFACE | grep global | head -1 | awk '{print $2}' | awk -F'/' '{print $1}'`
+
+	echo $DEFAULT_IPADDR
+}
+
+function network_init() {
+	set_hostname >/dev/null
+
+	if [ ! -f $NETWORK_CONF ]; then
+              $KWNG_LOG --error --code=2001 --message="Network config file doesn't exist"
+              exit 2001
+	fi
+
+	# Eger Gateway bossa, hic tanimlanmamissa, flush islemi yapilmayacaktir !!!
+	GATEWAY_STATUS=`cat $NETWORK_CONF | awk -F',' '{print $5}' | grep .`
+	if [ -z "$GATEWAY_STATUS" ]; then
+              DEFAULT_GW_SYNTAX=`ip route | grep "^default"`
+       else
+              DEFAULT_GW_SYNTAX=""
+	fi
+
+	cat /proc/net/dev | grep ":" | awk -F':' '{print $1}' | \
+	while read line
+	do
+		[ -z "$line" ] && continue
+		[ "$line" = "lo" ] && continue
+		ip addr flush dev $line
+	done
+
+	# Conf dosyasi parse ediliyor..
+	while IFS= read -r line
+	do
+		echo $line | grep "^#" > /dev/null
+		[ "$?" = "0" ] && continue
+
+		INTERFACE=`echo $line | awk -F',' '{print $1}'`
+		IPADDR=`echo $line | awk -F',' '{ print $3}'`
+		NETMASK=`echo $line | awk -F',' '{ print $4}'`
+		GATEWAY=`echo $line | awk -F',' '{ print $5}'`
+
+		# IP Adresi dogru formattami kontrol ediliyor
+		check_ipaddr_format $IPADDR
+		[ "$RETVAL" != "0" ] && continue
+
+		# Default IP Adresine esit ise devam etmesi gerekmekte Varsayilan ip adresine hic bir sekilde dokunulmamasi gerekiyor.
+		# Cunku network down olabilir ve panel ile baglanti kopabilir
+		# [ "$DEFAULT_ROUTE_IPADDR" = "$IPADDR" ] && continue
+		ip addr add $IPADDR/$NETMASK brd + dev $INTERFACE >/dev/null 2>&1
+		if [ ! -z "$GATEWAY" ]; then
+                     ip route add default via $GATEWAY >/dev/null 2>&1
+		fi
+	done < $NETWORK_CONF
+
+	# Eger Gateway Status true degilse..
+	if [ ! -z "$DEFAULT_GW_SYNTAX" ]; then
+              ip route add $DEFAULT_GW_SYNTAX
+              # echo "network.conf - gateway YOK.. DEFAULT_GW_SYNTAX uygulaniyor.."
+       # else
+              # echo "network.conf - gateway VAR.. DEFAULT_GW_SYNTAX uygulanmiyor.."
+	fi
+
+#	$WEBSRVMNG --init-vhosts          >/dev/null 2>&1
+	$SERVICESMNG --reload --service=web
+	$KWNG_LOG --success --code=2004 --message="Network init successfull"
+	exit 0
+}
+function set_config() {
+	if [ -z "$CONFIG" ]; then
+		$KWNG_LOG --error --code=2001 --message="Missing parameter"
+		exit 2001
+	fi
+	DECODED_CONTENT=`$FCRYPT -d --in="$CONFIG"`
+	echo "${DECODED_CONTENT}" > $NETWORK_CONF
+}
+function main_case() {
+	while [ "$1" != "" ]
+	do
+		case $1 in
+			--int=*)
+				INTERFACE=`echo $1 | sed -e 's/--int=//g'`
+				;;
+			--ipaddr=*)
+				IPADDR=`echo $1 | sed -e 's/--ipaddr=//g'`
+				;;
+			--netmask=*)
+				NETMASK=`echo $1 | sed -e 's/--netmask=//g'`
+				;;
+			--host=*)
+				HOST=`echo $1 | sed -e 's/--host=//g'`
+				;;
+			--config=*)
+				CONFIG=`echo $1 | sed -e 's/--config=//g'`
+				;;
+			--domain=*)
+				DOMAIN=`echo $1 | sed -e 's/--domain=//g'`
+				;;
+		esac
+		shift
+	done
+}
+
+#########################
+##### Main Function #####
+#########################
+check_command
+check_root
+
+PROC_MESSAGE=`echo "Process: $0 $@" | sed 's|["'\'']||g'`
+[[ -f $PANEL_CORE_DIR/bin/debug ]] && [[ "$1" != "--show-default-ip" ]] && $KWNG_LOG --debug --code=999 --message="$PROC_MESSAGE"
+
+case $1 in
+	--init|init)
+		shift
+		network_init
+		;;
+	--show)
+		network_show
+		;;
+	--show-route)
+		route_show
+		;;
+	--show-default-ip)
+		default_ipaddr
+		;;
+	--set-config)
+		main_case $@
+		set_config
+		;;
+	--hostname)
+		shift
+		main_case $@
+		set_hostname
+		exit 0
+		;;
+esac
