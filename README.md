@@ -4,6 +4,8 @@ FPanel helper scripts and service configuration templates for Linux.
 
 Secret values in templates are replaced with `ENTER_SECRET_KEY` / `ENTER_API_KEY`; set real values on the server.
 
+Website: https://fpanel.net
+
 ## Branch workflow
 
 - `main` and `dev` are protected: nobody pushes to them directly.
@@ -11,3 +13,7 @@ Secret values in templates are replaced with `ENTER_SECRET_KEY` / `ENTER_API_KEY
 - Push your branch and open a pull request into `dev`.
 - A pull request needs one approval before it can be merged.
 - `dev` is merged into `main` through a pull request for releases.
+
+## License
+
+This project is licensed under the GNU Affero General Public License v3.0. See `LICENSE` for details.
